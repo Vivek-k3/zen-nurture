@@ -1,0 +1,7 @@
+{
+  "name": "Zen Nurture",
+  "description": "A calm, India-first baby care tracker with AI-assisted logging and insights.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
