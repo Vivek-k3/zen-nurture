@@ -12,10 +12,7 @@ function useAuthFromBetterAuth() {
   const fetchAccessToken = useCallback(
     async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
       try {
-        const siteUrl =
-          process.env.NEXT_PUBLIC_CONVEX_SITE_URL ??
-          process.env.NEXT_PUBLIC_CONVEX_URL!.replace(".cloud", ".site");
-        const response = await fetch(`${siteUrl}/api/auth/convex/token`, {
+        const response = await fetch("/api/auth/convex/token", {
           credentials: "include",
         });
         if (!response.ok) return null;
