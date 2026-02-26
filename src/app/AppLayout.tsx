@@ -9,12 +9,7 @@ import UserMenu from "./components/UserMenu";
 
 const AUTH_PATHS = ["/sign-in", "/sign-up"];
 
-export default function AppLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-
-  if (AUTH_PATHS.includes(pathname)) {
-    return <>{children}</>;
-  }
+function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isMoraOpen, setIsMoraOpen] = useState(false);
   const moraTriggerRef = useRef<HTMLButtonElement>(null);
@@ -119,4 +114,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <MoraSidebar isOpen={isMoraOpen} onClose={closeMora} />
     </div>
   );
+}
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  if (AUTH_PATHS.includes(pathname)) {
+    return <>{children}</>;
+  }
+
+  return <AuthenticatedLayout>{children}</AuthenticatedLayout>;
 }
