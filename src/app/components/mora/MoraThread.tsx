@@ -4,7 +4,7 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
-  MessagePartPrimitive,
+  useMessage,
 } from "@assistant-ui/react";
 import { Button } from "@/components/ui/button";
 import MoraOrb from "@/components/MoraOrb";
@@ -100,15 +100,24 @@ function AssistantMessage() {
             ),
           }}
         />
-        <MessagePrimitive.If assistant>
-          <MessagePartPrimitive.InProgress>
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
-              Thinking...
-            </div>
-          </MessagePartPrimitive.InProgress>
+        <MessagePrimitive.If lastOrHover>
+          <InProgressIndicator />
         </MessagePrimitive.If>
       </div>
+    </div>
+  );
+}
+
+/* ---------- In-Progress Indicator ---------- */
+
+function InProgressIndicator() {
+  const message = useMessage();
+  if (message.status?.type !== "running") return null;
+
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+      <MoraOrb size="xs" state="thinking" />
+      <span>Thinking...</span>
     </div>
   );
 }
