@@ -1,0 +1,491 @@
+"use client";
+
+import { useState, useEffect, Suspense } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { CAREGIVER_COLORS } from "@/lib/constants";
+
+export default function SettingsPage() {
+  const [mounted, setMounted] = useState(false);
+  const [babyForm, setBabyForm] = useState({
+    name: "",
+    dob: "",
+    gender: "",
+    timezone: "Asia/Kolkata",
+    volumeUnit: "ml",
+    weightUnit: "kg",
+    lengthUnit: "cm",
+  });
+  const [caregiverForm, setCaregiverForm] = useState({
+    displayName: "",
+    color: CAREGIVER_COLORS[0],
+  });
+  const [isEditing, setIsEditing] = useState(false);
+  const [moraSaving, setMoraSaving] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const babyId = babyProfile?._id;
+  const exportDataQuery = useQuery(api.events.exportBabyData, babyId ? { babyId } : "skip");
+  const caregivers = useQuery(api.events.listCaregivers, babyId ? { babyId } : "skip");
+
+  const createBabyProfile = useMutation(api.events.createBabyProfile);
+  const updateBabyProfile = useMutation(api.events.updateBabyProfile);
+  const createCaregiver = useMutation(api.events.createCaregiver);
+  const deleteCaregiver = useMutation(api.events.deleteCaregiver);
+
+  const clearData = useMutation(api.events.clearBabyData);
+  const moraSettings = useQuery(api.mora.getMoraSettings, {});
+  const updateMoraSettings = useMutation(api.mora.updateMoraSettings);
+
+  useEffect(() => {
+    if (babyProfile) {
+      const nextForm = {
+        name: babyProfile.name || "",
+        dob: babyProfile.dob || "",
+        gender: babyProfile.gender || "",
+        timezone: babyProfile.timezone || "Asia/Kolkata",
+        volumeUnit: babyProfile.measurementUnits?.volume || "ml",
+        weightUnit: babyProfile.measurementUnits?.weight || "kg",
+        lengthUnit: babyProfile.measurementUnits?.length || "cm",
+      };
+
+      setBabyForm((prev) => {
+        if (
+          prev.name === nextForm.name &&
+          prev.dob === nextForm.dob &&
+          prev.gender === nextForm.gender &&
+          prev.timezone === nextForm.timezone &&
+          prev.volumeUnit === nextForm.volumeUnit &&
+          prev.weightUnit === nextForm.weightUnit &&
+          prev.lengthUnit === nextForm.lengthUnit
+        ) {
+          return prev;
+        }
+        return nextForm;
+      });
+    }
+  }, [babyProfile]);
+
+  const handleSaveBaby = async () => {
+    if (!babyForm.name || !babyForm.dob) return;
+
+    const measurementUnits = {
+      volume: babyForm.volumeUnit,
+      weight: babyForm.weightUnit,
+      length: babyForm.lengthUnit,
+    };
+
+    if (babyProfile?._id) {
+      await updateBabyProfile({
+        id: babyProfile._id,
+        name: babyForm.name,
+        dob: babyForm.dob,
+        gender: babyForm.gender || undefined,
+        timezone: babyForm.timezone,
+        measurementUnits,
+      });
+    } else {
+      await createBabyProfile({
+        name: babyForm.name,
+        dob: babyForm.dob,
+        gender: babyForm.gender || undefined,
+        timezone: babyForm.timezone,
+        measurementUnits,
+      });
+    }
+    setIsEditing(false);
+  };
+
+  const handleAddCaregiver = async () => {
+    if (!babyProfile?._id || !caregiverForm.displayName) return;
+
+    await createCaregiver({
+      babyId: babyProfile._id,
+      displayName: caregiverForm.displayName,
+      color: caregiverForm.color,
+    });
+
+    setCaregiverForm({
+      displayName: "",
+      color: CAREGIVER_COLORS[0],
+    });
+  };
+
+  const handleExport = async () => {
+    if (!exportDataQuery) return;
+    
+    const data = exportDataQuery;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `zen-nurture-export-${new Date().toISOString().split("T")[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClearData = async () => {
+    if (!babyProfile?._id) return;
+    
+    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+      await clearData({ babyId: babyProfile._id });
+      window.location.reload();
+    }
+  };
+
+  const patchMoraSetting = async (
+    field: "enabled" | "yoloMode" | "allowWrites",
+    value: boolean
+  ) => {
+    setMoraSaving(field);
+    try {
+      await updateMoraSettings({ [field]: value } as any);
+    } finally {
+      setMoraSaving(null);
+    }
+  };
+
+  if (!mounted) {
+    return null;
+  }
+
+  return (
+    <div className="p-4 lg:p-8 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-serif font-bold text-espresso mb-6">Settings</h1>
+
+      <div className="space-y-6">
+        <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-espresso">Baby Profile</h2>
+            {!isEditing && babyProfile && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="text-sage font-medium hover:underline"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+
+          {babyProfile || isEditing ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="baby-name" className="text-xs font-bold text-muted uppercase tracking-wider">Name</label>
+                  <input
+                    id="baby-name"
+                    type="text"
+                    value={babyForm.name}
+                    onChange={(e) => setBabyForm({ ...babyForm, name: e.target.value })}
+                    disabled={!isEditing}
+                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="baby-dob" className="text-xs font-bold text-muted uppercase tracking-wider">Date of Birth</label>
+                  <input
+                    id="baby-dob"
+                    type="date"
+                    value={babyForm.dob}
+                    onChange={(e) => setBabyForm({ ...babyForm, dob: e.target.value })}
+                    disabled={!isEditing}
+                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
+                  <select
+                    id="baby-gender"
+                    value={babyForm.gender}
+                    onChange={(e) => setBabyForm({ ...babyForm, gender: e.target.value })}
+                    disabled={!isEditing}
+                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                  >
+                    <option value="">Not specified</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="baby-timezone" className="text-xs font-bold text-muted uppercase tracking-wider">Timezone</label>
+                  <select
+                    id="baby-timezone"
+                    value={babyForm.timezone}
+                    onChange={(e) => setBabyForm({ ...babyForm, timezone: e.target.value })}
+                    disabled={!isEditing}
+                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                  >
+                    <option value="Asia/Kolkata">Asia/Kolkata</option>
+                    <option value="Asia/Mumbai">Asia/Mumbai</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-muted/10">
+                <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-3">Measurement Units</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="baby-volume-unit" className="text-xs text-muted">Volume</label>
+                    <select
+                      id="baby-volume-unit"
+                      value={babyForm.volumeUnit}
+                      onChange={(e) => setBabyForm({ ...babyForm, volumeUnit: e.target.value })}
+                      disabled={!isEditing}
+                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
+                    >
+                      <option value="ml">ml</option>
+                      <option value="oz">oz</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="baby-weight-unit" className="text-xs text-muted">Weight</label>
+                    <select
+                      id="baby-weight-unit"
+                      value={babyForm.weightUnit}
+                      onChange={(e) => setBabyForm({ ...babyForm, weightUnit: e.target.value })}
+                      disabled={!isEditing}
+                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
+                    >
+                      <option value="kg">kg</option>
+                      <option value="lb">lb</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="baby-length-unit" className="text-xs text-muted">Length</label>
+                    <select
+                      id="baby-length-unit"
+                      value={babyForm.lengthUnit}
+                      onChange={(e) => setBabyForm({ ...babyForm, lengthUnit: e.target.value })}
+                      disabled={!isEditing}
+                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
+                    >
+                      <option value="cm">cm</option>
+                      <option value="in">in</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveBaby}
+                    className="flex-1 py-3 rounded-xl bg-sage text-white font-bold hover:bg-sage/90"
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <span className="material-symbols-outlined text-5xl text-sage mb-4">child_friendly</span>
+              <h3 className="text-lg font-bold text-espresso mb-2">Add your baby</h3>
+              <p className="text-muted mb-4">Create a profile to start tracking</p>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-2 bg-sage text-white px-6 py-3 rounded-full font-bold hover:bg-sage/90"
+              >
+                <span className="material-symbols-outlined">add</span>
+                Add Baby
+              </button>
+            </div>
+          )}
+        </section>
+
+        {babyProfile && (
+          <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+            <h2 className="text-lg font-bold text-espresso mb-4">Caregivers</h2>
+            
+            <div className="space-y-3 mb-4">
+              {caregivers?.map((caregiver: any) => (
+                <div key={caregiver._id} className="flex items-center justify-between py-3 border-b border-muted/10 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="h-8 w-8 rounded-full"
+                      style={{ backgroundColor: caregiver.color }}
+                    />
+                    <span className="font-medium text-espresso">{caregiver.displayName}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteCaregiver({ id: caregiver._id })}
+                    className="text-muted hover:text-alert-red"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={caregiverForm.displayName}
+                onChange={(e) => setCaregiverForm({ ...caregiverForm, displayName: e.target.value })}
+                placeholder="Caregiver name"
+                className="flex-1 p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso"
+              />
+              <select
+                value={caregiverForm.color}
+                onChange={(e) => setCaregiverForm({ ...caregiverForm, color: e.target.value })}
+                className="p-3 rounded-xl bg-oat/50 border border-muted/10"
+              >
+                {CAREGIVER_COLORS.map((color) => (
+                  <option key={color} value={color} style={{ backgroundColor: color }}>
+                    ●
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddCaregiver}
+                disabled={!caregiverForm.displayName}
+                className="px-4 py-2 bg-sage text-white rounded-xl font-bold disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </section>
+        )}
+
+        {babyProfile && (
+          <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+            <h2 className="text-lg font-bold text-espresso mb-4">Data</h2>
+            
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleExport}
+                className="w-full flex items-center justify-between p-4 rounded-xl border border-muted/10 hover:border-sage/30 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-sage">download</span>
+                  <span className="font-medium text-espresso">Export Data</span>
+                </div>
+                <span className="material-symbols-outlined text-muted">chevron_right</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearData}
+                className="w-full flex items-center justify-between p-4 rounded-xl border border-alert-red/20 hover:border-alert-red/40 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-alert-red">delete_forever</span>
+                  <span className="font-medium text-alert-red">Clear All Data</span>
+                </div>
+                <span className="material-symbols-outlined text-alert-red">chevron_right</span>
+              </button>
+            </div>
+          </section>
+        )}
+
+        <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-espresso">Mora Settings</h2>
+              <p className="text-sm text-muted mt-1">
+                Parent-controlled AI assistant behavior and write permissions.
+              </p>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-sage/10 text-sage flex items-center justify-center">
+              <span className="material-symbols-outlined">smart_toy</span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                key: "enabled",
+                label: "Enable Mora",
+                help: "Shows the Mora sidebar and enables chat responses.",
+                value: moraSettings?.enabled ?? true,
+              },
+              {
+                key: "yoloMode",
+                label: "YOLO Mode",
+                help: "When on, Mora can auto-apply allowed actions without per-action approval.",
+                value: moraSettings?.yoloMode ?? false,
+              },
+              {
+                key: "allowWrites",
+                label: "Allow Mora Writes",
+                help: "Controls whether Mora can create/update/delete allowed data types.",
+                value: moraSettings?.allowWrites ?? true,
+              },
+            ].map((item) => (
+              <div
+                key={item.key}
+                className="rounded-2xl border border-muted/10 bg-oat/40 px-4 py-3 flex items-center justify-between gap-4"
+              >
+                <div>
+                  <div className="font-medium text-espresso">{item.label}</div>
+                  <div className="text-xs text-muted mt-1">{item.help}</div>
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={item.value}
+                  disabled={moraSaving !== null}
+                  onClick={() => patchMoraSetting(item.key as any, !item.value)}
+                  className={`relative h-7 w-12 rounded-full transition-colors ${
+                    item.value ? "bg-sage" : "bg-muted/30"
+                  } ${moraSaving === item.key ? "opacity-60" : ""}`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      item.value ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-muted/10 bg-white p-4">
+            <h3 className="text-sm font-bold text-espresso mb-2">Allowed Write Scopes (v1)</h3>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {["Events", "Reminders", "Notes"].map((scope) => (
+                <span
+                  key={scope}
+                  className="px-3 py-1 rounded-full bg-sage/10 text-sage text-xs font-semibold border border-sage/20"
+                >
+                  {scope}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-muted">
+              PIN / caregiver role controls are planned for a later version.
+            </p>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+          <h2 className="text-lg font-bold text-espresso mb-4">About</h2>
+          <div className="text-muted text-sm">
+            <p className="mb-2">Zen Nurture v0.1.0</p>
+            <p>A calm, fast baby care tracker for India-first parents.</p>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
