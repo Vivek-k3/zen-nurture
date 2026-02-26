@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { AuthGuard } from "@/components/AuthGuard";
 import { BabyProvider } from "@/components/BabyContext";
+import { ThemeProvider } from "@/components/ThemeContext";
 import AppLayout from "./AppLayout";
 
 export const metadata: Metadata = {
@@ -25,11 +26,13 @@ export default function RootLayout({
       </head>
       <body>
         <ConvexClientProvider>
-          <AuthGuard>
-            <BabyProvider>
-              <AppLayout>{children}</AppLayout>
-            </BabyProvider>
-          </AuthGuard>
+          <ThemeProvider>
+            <AuthGuard>
+              <BabyProvider>
+                <AppLayout>{children}</AppLayout>
+              </BabyProvider>
+            </AuthGuard>
+          </ThemeProvider>
         </ConvexClientProvider>
       </body>
     </html>

@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-espresso: #2D2926;
-  --color-oat: #F5F2EB;
-  --color-sage: #7C9A82;
-  --color-sage-light: #A8C4AD;
-  --color-clay: #C4A484;
-  --color-night: #1E293B;
-  --color-dusty-blue: #6B8CAE;
-  --color-muted: #6B6B6B;
-  --color-alert-red: #E57373;
+  --color-espresso: var(--espresso);
+  --color-oat: var(--oat);
+  --color-sage: var(--sage);
+  --color-sage-light: var(--sage-light);
+  --color-clay: var(--clay);
+  --color-night: var(--night);
+  --color-dusty-blue: var(--dusty-blue);
+  --color-muted: var(--muted);
+  --color-alert-red: var(--alert-red);
 }
 
 :root {
@@ -22,16 +22,48 @@
   --dusty-blue: #6B8CAE;
   --muted: #6B6B6B;
   --alert-red: #E57373;
+  --card: #FFFFFF;
+  --card-border: rgba(0,0,0,0.05);
+}
+
+.dark {
+  --espresso: #F0EDE6;
+  --oat: #1A1A1D;
+  --sage: #8FB396;
+  --sage-light: #6B9872;
+  --clay: #D4B896;
+  --night: #94A3B8;
+  --dusty-blue: #8BAACE;
+  --muted: #9CA3AF;
+  --alert-red: #F87171;
+  --card: #242428;
+  --card-border: rgba(255,255,255,0.06);
 }
 
 body {
   color: var(--espresso);
   background: var(--oat);
+  transition: background-color 0.2s, color 0.2s;
 }
 
 button {
   cursor: pointer;
 }
+
+/* Dark overrides for white backgrounds */
+.dark .bg-white { background-color: var(--card) !important; }
+.dark .bg-white\/80 { background-color: color-mix(in srgb, var(--card) 80%, transparent) !important; }
+.dark .bg-white\/70 { background-color: color-mix(in srgb, var(--card) 70%, transparent) !important; }
+.dark .bg-white\/90 { background-color: color-mix(in srgb, var(--card) 90%, transparent) !important; }
+.dark .bg-white\/50 { background-color: color-mix(in srgb, var(--card) 50%, transparent) !important; }
+.dark .bg-\[\#FEFCF8\] { background-color: #1E1E22 !important; }
+.dark .bg-\[\#FDFBF7\] { background-color: #1E1E22 !important; }
+.dark .bg-\[\#fffefb\] { background-color: #2A2A2E !important; }
+.dark .border-black\/5 { border-color: rgba(255,255,255,0.06) !important; }
+.dark .border-muted\/10 { border-color: rgba(156,163,175,0.12) !important; }
+.dark .text-espresso { color: var(--espresso) !important; }
+.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important; }
+.dark .shadow-lg { box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important; }
 
 @keyframes breathe {
   0%, 100% { transform: scale(1); opacity: 0.85; }
@@ -72,4 +104,12 @@ button {
     linear-gradient(rgba(45,41,38,0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(45,41,38,0.04) 1px, transparent 1px);
   background-size: auto, auto, 18px 18px, 18px 18px;
+}
+
+.dark .mora-panel-grid {
+  background-image:
+    radial-gradient(circle at 18% 18%, rgba(143, 179, 150, 0.08) 0 22%, transparent 23%),
+    radial-gradient(circle at 82% 0%, rgba(212, 184, 150, 0.06) 0 18%, transparent 19%),
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
 }

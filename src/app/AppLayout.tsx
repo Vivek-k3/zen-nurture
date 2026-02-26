@@ -7,6 +7,7 @@ import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
 import UserMenu from "./components/UserMenu";
 import NotificationBell from "./components/NotificationBell";
+import ThemeToggle from "./components/ThemeToggle";
 import MoraOrb from "@/components/MoraOrb";
 
 const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
@@ -69,6 +70,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold">Mora</span>
             </button>
 
+            <ThemeToggle />
             <div className="relative">
               <NotificationBell />
             </div>

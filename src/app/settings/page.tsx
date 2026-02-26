@@ -8,6 +8,7 @@ import { authClient } from "@/lib/auth-client";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { Switch } from "@/components/ui/switch";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useTheme } from "@/components/ThemeContext";
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -32,6 +33,7 @@ export default function SettingsPage() {
   const [inviteSuccess, setInviteSuccess] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
   const push = usePushNotifications();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
@@ -619,6 +621,40 @@ export default function SettingsPage() {
             </div>
           </section>
         )}
+
+        {/* Appearance */}
+        <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-espresso">Appearance</h2>
+              <p className="text-sm text-muted mt-1">Dark mode for 3 AM feeds.</p>
+            </div>
+            <div className="h-10 w-10 shrink-0 rounded-full bg-night/10 text-night flex items-center justify-center">
+              <span className="material-symbols-outlined">palette</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { key: "light", icon: "light_mode", label: "Light" },
+              { key: "dark", icon: "dark_mode", label: "Dark" },
+              { key: "system", icon: "contrast", label: "System" },
+            ] as const).map(({ key, icon, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTheme(key)}
+                className={`py-4 rounded-2xl flex flex-col items-center gap-1.5 text-sm font-bold transition-all border ${
+                  theme === key
+                    ? "bg-espresso text-oat border-espresso"
+                    : "bg-oat/30 text-muted border-muted/10 hover:border-muted/30"
+                }`}
+              >
+                <span className="material-symbols-outlined text-xl">{icon}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {push.state !== "unsupported" && (
           <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
