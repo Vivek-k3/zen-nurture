@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
 import { Switch } from "@/components/ui/switch";
+import PhotoAttacher from "@/components/PhotoAttacher";
 
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
@@ -70,6 +71,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
   const [medDoseUnit, setMedDoseUnit] = useState("ml");
   const [medOutcome, setMedOutcome] = useState<"taken" | "skipped" | "vomited">("taken");
   const [isSleepingNow, setIsSleepingNow] = useState(false);
+  const [photoIds, setPhotoIds] = useState<string[]>([]);
 
   const babyProfile = useQuery(api.events.getBabyProfile, {});
   const createEvent = useMutation(api.events.createEvent);
@@ -184,7 +186,8 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         timestamp,
         payload,
         source: "manual",
-      });
+        ...(photoIds.length > 0 ? { photoIds } : {}),
+      } as any);
       onClose();
       setView("menu");
       resetForm();
@@ -219,6 +222,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     setMedDoseUnit("ml");
     setMedOutcome("taken");
     setIsSleepingNow(false);
+    setPhotoIds([]);
   };
 
   useEffect(() => {
@@ -911,7 +915,11 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         </div>
 
         {view !== "menu" && (
-          <div className="p-6 border-t border-muted/10 bg-white/80 backdrop-blur-md">
+          <div className="p-6 border-t border-muted/10 bg-white/80 backdrop-blur-md space-y-3">
+            <div>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Photos (optional)</p>
+              <PhotoAttacher storageIds={photoIds} onChange={setPhotoIds} />
+            </div>
             <button
               type="button"
               onClick={handleSaveEvent}

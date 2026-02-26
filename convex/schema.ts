@@ -66,6 +66,7 @@ export default defineSchema({
     source: v.optional(v.string()),
     loggedBy: v.optional(v.string()),
     loggedByName: v.optional(v.string()),
+    photoIds: v.optional(v.array(v.string())),
     createdAt: v.string(),
     updatedAt: v.optional(v.string()),
   })

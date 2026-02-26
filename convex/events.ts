@@ -460,6 +460,7 @@ export const createEvent = mutation({
     caregiverId: v.optional(v.id("caregivers")),
     payload: v.optional(v.any()),
     source: v.optional(v.string()),
+    photoIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const user = await authComponent.safeGetAuthUser(ctx);

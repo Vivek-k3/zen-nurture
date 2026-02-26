@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
 import { formatTime, formatDate, isToday, isYesterday } from "@/lib/time";
+import EventPhotos from "../components/EventPhotos";
 
 type TypeFilter = "all" | string;
 
@@ -102,6 +103,13 @@ function TimelineCard({ event }: { event: any }) {
 
         {detail && (
           <p className="text-xs text-muted mt-0.5 truncate">{detail}</p>
+        )}
+
+        {/* Photos */}
+        {event.photoIds?.length > 0 && (
+          <div className="mt-2">
+            <EventPhotos storageIds={event.photoIds} />
+          </div>
         )}
 
         {/* Attribution line */}
