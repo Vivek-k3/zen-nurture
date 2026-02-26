@@ -462,10 +462,12 @@ export const createEvent = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
     const id = await ctx.db.insert("events", {
       ...args,
       source: args.source || "manual",
       createdAt: new Date().toISOString(),
+      ...(user ? { loggedBy: user._id, loggedByName: user.name } : {}),
     });
     return id;
   },
@@ -695,6 +697,25 @@ export const computeUpcomingReminders = query({
     return upcoming.sort((a, b) => 
       new Date(a.dueTime).getTime() - new Date(b.dueTime).getTime()
     ).slice(0, 10);
+  },
+});
+
+export const listTimeline = query({
+  args: {
+    babyId: v.id("babyProfiles"),
+    limit: v.optional(v.number()),
+    type: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let q = ctx.db
+      .query("events")
+      .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId));
+
+    if (args.type) {
+      q = q.filter((q) => q.eq(q.field("type"), args.type));
+    }
+
+    return await q.order("desc").take(args.limit ?? 50);
   },
 });
 

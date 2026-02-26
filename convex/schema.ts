@@ -64,6 +64,8 @@ export default defineSchema({
     caregiverId: v.optional(v.id("caregivers")),
     payload: v.optional(v.any()),
     source: v.optional(v.string()),
+    loggedBy: v.optional(v.string()),
+    loggedByName: v.optional(v.string()),
     createdAt: v.string(),
     updatedAt: v.optional(v.string()),
   })
