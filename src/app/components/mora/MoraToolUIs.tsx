@@ -240,16 +240,66 @@ function normalize(result: any) {
 const READ_TOOLS = [
   "get_baby_profile", "get_recent_events", "get_historic_events",
   "get_daily_summary", "get_range_summary", "get_reminders",
-  "get_last_events_by_type", "search_records",
+  "get_last_events_by_type", "search_records", "analyze_patterns",
 ] as const;
 
+function PatternAnalysisUI({ status, result }: { status: string; result: any }) {
+  const isDone = status === "complete";
+  const data = normalize(result);
+  const patterns = data?.patterns;
+
+  if (!isDone) {
+    return (
+      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+        <MoraOrb size="xs" state="thinking" />
+        <span className="font-medium text-espresso">Analyzing patterns...</span>
+      </div>
+    );
+  }
+
+  if (!patterns || Object.keys(patterns).length === 0) {
+    return (
+      <div className="my-2 rounded-xl border border-muted/15 bg-oat/40 p-3 text-[12px]">
+        <span className="text-muted">No pattern data found.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2 rounded-xl border border-sage/20 bg-white p-3 shadow-sm text-[12px] space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="material-symbols-outlined text-sage text-[16px]">insights</span>
+        <span className="font-semibold text-espresso">Pattern Analysis</span>
+      </div>
+      {Object.entries(patterns).map(([type, info]: [string, any]) => {
+        if (!info.avgIntervalHours) return null;
+        const label = type.replace(/_/g, " ").toLowerCase();
+        return (
+          <div key={type} className="flex items-center justify-between gap-2 py-1 border-b border-muted/5 last:border-0">
+            <span className="text-espresso capitalize">{label}</span>
+            <div className="text-right text-muted">
+              <span className="font-mono font-semibold text-espresso">{info.avgIntervalHours}h</span> avg
+              <span className="text-muted/50 mx-1">·</span>
+              {info.perDay}/day
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const toolUIs = [
-  ...READ_TOOLS.map((toolName) =>
+  ...READ_TOOLS.filter((t) => t !== "analyze_patterns").map((toolName) =>
     makeAssistantToolUI({
       toolName,
       render: ({ status }) => <ReadToolUI name={toolName} status={status.type} />,
     })
   ),
+  makeAssistantToolUI({
+    toolName: "analyze_patterns",
+    render: ({ status, result }) => <PatternAnalysisUI status={status.type} result={result} />,
+  }),
   makeAssistantToolUI({
     toolName: "create_event",
     render: ({ args, status, result }) => (
