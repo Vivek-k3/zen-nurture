@@ -13,6 +13,7 @@ import type * as digest from "../digest.js";
 import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
+import type * as milestones from "../milestones.js";
 import type * as mora from "../mora.js";
 import type * as push from "../push.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   families: typeof families;
   http: typeof http;
+  milestones: typeof milestones;
   mora: typeof mora;
   push: typeof push;
 }>;

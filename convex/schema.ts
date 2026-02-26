@@ -115,6 +115,18 @@ export default defineSchema({
     .index("by_babyId", ["babyId"])
     .index("by_tags", ["tags"]),
 
+  milestones: defineTable({
+    babyId: v.id("babyProfiles"),
+    key: v.string(),
+    title: v.string(),
+    category: v.string(),
+    achievedAt: v.optional(v.string()),
+    note: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_babyId", ["babyId"])
+    .index("by_babyId_key", ["babyId", "key"]),
+
   weeklyDigests: defineTable({
     babyId: v.id("babyProfiles"),
     weekStart: v.string(),

@@ -61,6 +61,7 @@ const Sidebar = () => {
         <NavItem path="/reminders" icon="notifications" label="Reminders" pathname={pathname} />
         <NavItem path="/trends" icon="show_chart" label="Trends" pathname={pathname} />
         <NavItem path="/records" icon="folder_open" label="Records" pathname={pathname} />
+        <NavItem path="/milestones" icon="emoji_events" label="Milestones" pathname={pathname} />
         <NavItem path="/settings" icon="settings" label="Settings" pathname={pathname} />
       </nav>
 
