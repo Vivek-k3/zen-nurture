@@ -1,14 +1,6 @@
-import { betterAuth } from "better-auth";
-import { convexAdapter } from "@convex-dev/better-auth";
-import { ConvexHttpClient } from "convex/browser";
+import { convexBetterAuthNextJs } from "@convex-dev/better-auth/nextjs";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
-export const auth = betterAuth({
-  baseURL: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000", // pragma: allowlist secret
-  database: convexAdapter(convex),
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: false,
-  },
+export const { handler, getToken, isAuthenticated } = convexBetterAuthNextJs({
+  convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL!,
+  convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
 });
