@@ -7,6 +7,7 @@ import {
   MessagePartPrimitive,
 } from "@assistant-ui/react";
 import { Button } from "@/components/ui/button";
+import MoraOrb from "@/components/MoraOrb";
 
 interface MoraThreadProps {
   quickPrompts: string[];
@@ -36,9 +37,7 @@ function MoraWelcome({ quickPrompts }: { quickPrompts: string[] }) {
       <div className="p-5 space-y-4">
         <div className="rounded-2xl border border-sage/15 bg-white/70 p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
-            <div className="h-7 w-7 rounded-full bg-sage/15 text-sage flex items-center justify-center">
-              <span className="material-symbols-outlined text-sm">smart_toy</span>
-            </div>
+            <MoraOrb size="xs" state="idle" />
             <span className="text-[13px] font-semibold text-espresso">Mora</span>
           </div>
           <p className="text-[13px] text-muted leading-relaxed">
@@ -89,7 +88,7 @@ function AssistantMessage() {
     <div className="flex justify-start px-4 py-1.5">
       <div className="max-w-[92%] rounded-2xl rounded-bl-md px-4 py-3 bg-white/80 border border-black/5 shadow-sm">
         <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted">
-          <span className="material-symbols-outlined text-sm text-sage">smart_toy</span>
+          <MoraOrb size="xs" state="idle" />
           Mora
         </div>
         <MessagePrimitive.Content

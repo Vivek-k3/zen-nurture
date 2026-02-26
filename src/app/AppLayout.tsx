@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
 import UserMenu from "./components/UserMenu";
+import MoraOrb from "@/components/MoraOrb";
 
 const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
@@ -61,9 +62,9 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
-              className="flex items-center gap-2 bg-white/90 text-espresso px-4 py-2.5 rounded-full shadow-sm border border-black/5 hover:border-sage/30 hover:bg-white transition-all"
+              className="flex items-center gap-2 bg-white/90 text-espresso pl-3 pr-4 py-2 rounded-full shadow-sm border border-black/5 hover:border-sage/30 hover:bg-white transition-all"
             >
-              <span className="material-symbols-outlined text-[20px] text-sage">smart_toy</span>
+              <MoraOrb size="xs" />
               <span className="text-sm font-bold">Mora</span>
             </button>
 
@@ -86,10 +87,10 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
-              className="h-10 w-10 rounded-full flex items-center justify-center text-sage bg-white/80 border border-black/5"
+              className="h-10 w-10 rounded-full flex items-center justify-center bg-white/80 border border-black/5"
               aria-label="Open Mora"
             >
-              <span className="material-symbols-outlined">smart_toy</span>
+              <MoraOrb size="xs" />
             </button>
             <button type="button" className="h-10 w-10 flex items-center justify-center text-espresso">
               <span className="material-symbols-outlined">menu</span>

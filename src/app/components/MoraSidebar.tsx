@@ -9,6 +9,7 @@ import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { DefaultChatTransport } from "ai";
 import { Button } from "@/components/ui/button";
+import MoraOrb from "@/components/MoraOrb";
 import MoraThread from "./mora/MoraThread";
 import MoraToolUIs from "./mora/MoraToolUIs";
 
@@ -125,9 +126,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
         <div className="border-b border-black/5 px-4 md:px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-full bg-white/85 border border-sage/15 shadow-sm flex items-center justify-center text-sage">
-                <span className="material-symbols-outlined">smart_toy</span>
-              </div>
+              <MoraOrb size="sm" state="idle" />
               <div>
                 <h2 className="text-base font-semibold text-espresso tracking-tight">Mora</h2>
                 <p className="text-[11px] text-muted">AI copilot &middot; {pageLabel}</p>
@@ -150,7 +149,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
         {!moraEnabled ? (
           <div className="flex-1 flex items-center justify-center p-6">
             <div className="rounded-2xl border border-alert-red/15 bg-white p-6 shadow-sm text-center max-w-xs">
-              <span className="material-symbols-outlined text-4xl text-muted/40 mb-3">smart_toy</span>
+              <MoraOrb size="lg" state="idle" className="mx-auto mb-3" />
               <h3 className="font-semibold text-espresso mb-1">Mora is disabled</h3>
               <p className="text-[13px] text-muted mb-4">
                 Enable Mora in Settings to use the AI assistant.
