@@ -7,6 +7,7 @@ import { api } from "../../convex/_generated/api";
 import { formatDateFull, formatBabyAge } from "@/lib/time";
 import { EVENT_TYPES } from "@/lib/constants";
 import { useLiveTimer, formatElapsed, formatElapsedCompact } from "@/hooks/useLiveTimer";
+import ActivityFeed from "./components/ActivityFeed";
 
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
@@ -179,6 +180,11 @@ export default function TodayPage() {
               </div>
             </div>
           )}
+
+          {/* Activity Feed */}
+          <div className="mb-8">
+            <ActivityFeed babyId={babyId} />
+          </div>
 
           {/* Quick Actions */}
           <div className="mb-6">

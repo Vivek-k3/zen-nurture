@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import ActivityFeed from "./ActivityFeed";
 
 type NavItemProps = {
   path: string;
@@ -33,6 +36,8 @@ function NavItem({ path, icon, label, exact = false, pathname }: NavItemProps) {
 
 const Sidebar = () => {
   const pathname = usePathname() ?? "";
+  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const babyId = babyProfile?._id;
 
   return (
     <div className="hidden lg:flex flex-col w-20 xl:w-72 border-r border-muted/20 p-4 gap-6 bg-oat z-0 h-screen">
@@ -59,19 +64,16 @@ const Sidebar = () => {
         <NavItem path="/settings" icon="settings" label="Settings" pathname={pathname} />
       </nav>
 
-      <div className="mt-auto hidden xl:block p-4 rounded-2xl bg-white/50 border border-white/60">
-        <div className="flex items-start gap-3">
-          <div className="p-2 bg-sage/20 rounded-full text-sage">
-            <span className="material-symbols-outlined text-sm">smart_toy</span>
+      {babyId && (
+        <div className="mt-auto hidden xl:block p-3 rounded-2xl bg-white/50 border border-white/60">
+          <div className="flex items-center gap-1.5 mb-2 px-1">
+            <span className="material-symbols-outlined text-sage text-[14px]">groups</span>
+            <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider">Activity</h4>
+            <span className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-espresso mb-1">AI Assistant</h4>
-            <p className="text-[10px] text-muted leading-relaxed">
-              &quot;Reviewing last 24h logs...&quot;
-            </p>
-          </div>
+          <ActivityFeed babyId={babyId} compact />
         </div>
-      </div>
+      )}
     </div>
   );
 };
