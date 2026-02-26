@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { CAREGIVER_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
+import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -27,6 +28,7 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState("");
+  const [diceSpinning, setDiceSpinning] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -95,6 +97,21 @@ export default function SettingsPage() {
       });
     }
   }, [babyProfile]);
+
+  const rollFamilyName = () => {
+    setDiceSpinning(true);
+    let count = 0;
+    const total = 12 + Math.floor(Math.random() * 6);
+    const interval = setInterval(() => {
+      const idx = Math.floor(Math.random() * POP_CULTURE_FAMILY_NAMES.length);
+      setFamilyName(POP_CULTURE_FAMILY_NAMES[idx]);
+      count++;
+      if (count >= total) {
+        clearInterval(interval);
+        setDiceSpinning(false);
+      }
+    }, 80);
+  };
 
   const handleCreateFamily = async () => {
     if (!familyName.trim()) return;
@@ -253,7 +270,7 @@ export default function SettingsPage() {
               <p className="text-muted mb-4 text-sm">
                 Create a family to start adding babies and inviting caregivers
               </p>
-              <div className="flex gap-2 max-w-sm mx-auto">
+              <div className="flex gap-2 max-w-md mx-auto">
                 <input
                   type="text"
                   value={familyName}
@@ -261,6 +278,15 @@ export default function SettingsPage() {
                   placeholder="Family name (e.g. The Sharmas)"
                   className="flex-1 p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso"
                 />
+                <button
+                  type="button"
+                  onClick={rollFamilyName}
+                  disabled={diceSpinning}
+                  title="Random family name"
+                  className={`h-12 w-12 shrink-0 rounded-xl bg-clay/10 border border-clay/20 flex items-center justify-center text-clay hover:bg-clay/20 transition-all ${diceSpinning ? "animate-spin" : ""}`}
+                >
+                  <span className="material-symbols-outlined text-[22px]">casino</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleCreateFamily}
