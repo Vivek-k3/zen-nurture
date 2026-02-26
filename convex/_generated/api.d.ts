@@ -15,6 +15,7 @@ import type * as families from "../families.js";
 import type * as http from "../http.js";
 import type * as milestones from "../milestones.js";
 import type * as mora from "../mora.js";
+import type * as nudges from "../nudges.js";
 import type * as push from "../push.js";
 
 import type {
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   milestones: typeof milestones;
   mora: typeof mora;
+  nudges: typeof nudges;
   push: typeof push;
 }>;
 

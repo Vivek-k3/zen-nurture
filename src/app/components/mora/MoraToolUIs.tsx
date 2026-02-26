@@ -241,7 +241,7 @@ const READ_TOOLS = [
   "get_baby_profile", "get_recent_events", "get_historic_events",
   "get_daily_summary", "get_range_summary", "get_reminders",
   "get_last_events_by_type", "search_records", "analyze_patterns",
-  "generate_weekly_digest",
+  "generate_weekly_digest", "check_nudges",
 ] as const;
 
 function PatternAnalysisUI({ status, result }: { status: string; result: any }) {
@@ -354,7 +354,51 @@ function daysBetween(from: string, to: string) {
   return Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24)) + 1);
 }
 
-const CUSTOM_TOOL_NAMES = ["analyze_patterns", "generate_weekly_digest"];
+function NudgesUI({ status, result }: { status: string; result: any }) {
+  const isDone = status === "complete";
+  const data = normalize(result);
+  const nudges = Array.isArray(data) ? data : data?.nudges ?? data ?? [];
+
+  if (!isDone) {
+    return (
+      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+        <MoraOrb size="xs" state="thinking" />
+        <span className="font-medium text-espresso">Checking for anomalies...</span>
+      </div>
+    );
+  }
+
+  if (!Array.isArray(nudges) || nudges.length === 0) {
+    return (
+      <div className="my-2 rounded-xl border border-sage/20 bg-sage/5 p-3 text-[12px] flex items-center gap-2">
+        <span className="material-symbols-outlined text-sage text-[16px]">check_circle</span>
+        <span className="font-medium text-espresso">All on track — no unusual gaps detected.</span>
+      </div>
+    );
+  }
+
+  const severityColors: Record<string, string> = {
+    info: "border-sage/15 bg-sage/5",
+    warn: "border-clay/20 bg-clay/5",
+    alert: "border-alert-red/20 bg-alert-red/5",
+  };
+
+  return (
+    <div className="my-2 space-y-1.5">
+      {nudges.map((n: any, i: number) => (
+        <div key={i} className={`rounded-xl border p-2.5 text-[12px] flex items-center gap-2 ${severityColors[n.severity] ?? "border-muted/15 bg-oat/40"}`}>
+          <span className="material-symbols-outlined text-[16px]">{n.icon ?? "info"}</span>
+          <div>
+            <span className="font-semibold text-espresso">{n.title}</span>
+            <span className="text-muted ml-1">{n.body}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const CUSTOM_TOOL_NAMES = ["analyze_patterns", "generate_weekly_digest", "check_nudges"];
 
 const toolUIs = [
   ...READ_TOOLS.filter((t) => !CUSTOM_TOOL_NAMES.includes(t)).map((toolName) =>
@@ -370,6 +414,10 @@ const toolUIs = [
   makeAssistantToolUI({
     toolName: "generate_weekly_digest",
     render: ({ status, result }) => <DigestUI status={status.type} result={result} />,
+  }),
+  makeAssistantToolUI({
+    toolName: "check_nudges",
+    render: ({ status, result }) => <NudgesUI status={status.type} result={result} />,
   }),
   makeAssistantToolUI({
     toolName: "create_event",

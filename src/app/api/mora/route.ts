@@ -179,6 +179,11 @@ export async function POST(req: Request) {
     "- If the user agrees, use create_reminder with the suggested triggerConfig from analyze_patterns.",
     "- Compare with existing reminders to avoid duplicates.",
     "",
+    "## Proactive Nudges",
+    "- When user asks 'anything I should know?', 'is everything OK?', or 'status check', use check_nudges.",
+    "- If nudges exist, present them with empathy: 'Baby hasn't fed in 4h, which is longer than the usual 2.5h. Everything OK?'",
+    "- Suggest logging the event if overdue, or reassure if the gap is within normal range.",
+    "",
     "## Weekly Digest",
     "- When user asks for a weekly summary/report/digest, use generate_weekly_digest.",
     "- Present the comparison in a friendly, scannable format with highlights and concerns.",
@@ -568,6 +573,18 @@ export async function POST(req: Request) {
               enabled: r.enabled,
             })),
           };
+        },
+      }),
+      check_nudges: tool({
+        description:
+          "Check for proactive nudges — unusual gaps in feeding, diapers, or sleep " +
+          "compared to the baby's historical averages. Also checks for skipped meds. " +
+          "Use when user asks 'anything I should know?' or 'is everything on track?'",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, {});
+          if (!profile?._id) return { nudges: [] };
+          return await convex.query(api.nudges.getActiveNudges, { babyId: profile._id });
         },
       }),
       generate_weekly_digest: tool({

@@ -9,6 +9,7 @@ import { EVENT_TYPES } from "@/lib/constants";
 import { useLiveTimer, formatElapsed, formatElapsedCompact } from "@/hooks/useLiveTimer";
 import ActivityFeed from "./components/ActivityFeed";
 import WeeklyDigestCard from "./components/WeeklyDigestCard";
+import NudgeBanner from "./components/NudgeBanner";
 
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
@@ -94,6 +95,9 @@ export default function TodayPage() {
               </div>
             )}
           </div>
+
+          {/* Proactive Nudges */}
+          <NudgeBanner babyId={babyId} />
 
           {/* Live Timer Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 mb-8">
