@@ -5,9 +5,10 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatDuration, getDateDaysAgo } from "@/lib/time";
 import GrowthChart from "../components/GrowthChart";
+import TrendsCharts from "../components/TrendsCharts";
 import type { Gender } from "@/lib/who-percentiles";
 
-type TrendsTab = "24h" | "7d" | "growth";
+type TrendsTab = "24h" | "7d" | "14d" | "30d" | "growth";
 type DiaperKindFilter = "all" | "wet" | "dirty" | "dry" | "mixed";
 type DiaperTextureFilter = "all" | "runny" | "mucousy" | "mushy" | "solid" | "pebbles";
 type DiaperColorFilter = "all" | "black" | "green" | "yellow" | "brown" | "red" | "gray";
@@ -35,6 +36,20 @@ export default function TrendsPage() {
       ? {
           babyId,
           date: todayStr,
+        }
+      : "skip"
+  );
+
+  const rangeDays = timeRange === "14d" ? 14 : timeRange === "30d" ? 30 : 7;
+  const rangeStart = getDateDaysAgo(rangeDays - 1);
+
+  const rangeAggregates = useQuery(
+    api.events.getRangeAggregates,
+    babyId && timeRange !== "24h" && timeRange !== "growth"
+      ? {
+          babyId,
+          from: rangeStart.toISOString(),
+          to: new Date().toISOString(),
         }
       : "skip"
   );
@@ -164,6 +179,8 @@ export default function TrendsPage() {
           {([
             { key: "24h", label: "24h" },
             { key: "7d", label: "7d" },
+            { key: "14d", label: "14d" },
+            { key: "30d", label: "30d" },
             { key: "growth", label: "Growth" },
           ] as const).map(({ key, label }) => (
             <button
@@ -292,64 +309,15 @@ export default function TrendsPage() {
                 <p className="text-muted">No data for today yet</p>
               </div>
             )
+          ) : timeRange === "7d" || timeRange === "14d" || timeRange === "30d" ? (
+            <TrendsCharts rangeAggregates={rangeAggregates ?? null} days={rangeDays} />
           ) : timeRange === "growth" ? (
             <GrowthSection
               events={growthEvents ?? []}
               dob={babyProfile.dob}
               gender={(babyProfile.gender as Gender) || "male"}
             />
-          ) : weeklyStats ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-sage"></span>
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Feeds/Day</span>
-                </div>
-                <div className="text-3xl font-bold text-espresso">{weeklyStats.avgFeeds}</div>
-                <div className="text-sm text-muted mt-1">per day</div>
-              </div>
-
-              <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-sage"></span>
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Intake</span>
-                </div>
-                <div className="text-3xl font-bold text-espresso">{weeklyStats.avgMl}ml</div>
-                <div className="text-sm text-muted mt-1">per day</div>
-              </div>
-
-              <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-clay"></span>
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Diapers</span>
-                </div>
-                <div className="text-3xl font-bold text-espresso">{weeklyStats.avgDiapersUnfiltered}</div>
-                <div className="text-xs text-muted mt-1">Unfiltered baseline</div>
-              </div>
-
-              <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-clay"></span>
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Filtered Diapers</span>
-                </div>
-                <div className="text-3xl font-bold text-espresso">{weeklyStats.avgDiapersFiltered}</div>
-                <div className="text-xs text-muted mt-1">Avg/day with filters applied</div>
-              </div>
-
-              <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10 col-span-2 md:col-span-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-night"></span>
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Total Sleep</span>
-                </div>
-                <div className="text-3xl font-bold text-espresso">{weeklyStats.totalSleep}h</div>
-                <div className="text-sm text-muted mt-1">this week</div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-[20px] p-8 text-center shadow-sm border border-muted/10">
-              <p className="text-muted">No data for the past week</p>
-            </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>
