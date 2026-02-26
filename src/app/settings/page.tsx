@@ -618,58 +618,64 @@ export default function SettingsPage() {
         )}
 
         <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-          <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-start justify-between gap-4 mb-5">
             <div>
               <h2 className="text-lg font-bold text-espresso">Mora Settings</h2>
               <p className="text-sm text-muted mt-1">
                 Parent-controlled AI assistant behavior and write permissions.
               </p>
             </div>
-            <div className="h-10 w-10 rounded-full bg-sage/10 text-sage flex items-center justify-center">
+            <div className="h-10 w-10 shrink-0 rounded-full bg-sage/10 text-sage flex items-center justify-center">
               <span className="material-symbols-outlined">smart_toy</span>
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {[
               {
                 key: "enabled",
+                icon: "toggle_on",
                 label: "Enable Mora",
                 help: "Shows the Mora sidebar and enables chat responses.",
                 value: moraSettings?.enabled ?? true,
               },
               {
                 key: "yoloMode",
+                icon: "bolt",
                 label: "YOLO Mode",
-                help: "When on, Mora can auto-apply allowed actions without per-action approval.",
+                help: "Auto-apply actions without per-action approval.",
                 value: moraSettings?.yoloMode ?? false,
               },
               {
                 key: "allowWrites",
-                label: "Allow Mora Writes",
-                help: "Controls whether Mora can create/update/delete allowed data types.",
+                icon: "edit_note",
+                label: "Allow Writes",
+                help: "Let Mora create, update and delete data.",
                 value: moraSettings?.allowWrites ?? true,
               },
             ].map((item) => (
               <div
                 key={item.key}
-                className="rounded-2xl border border-muted/10 bg-oat/40 px-4 py-3 flex items-center justify-between gap-4"
+                className="rounded-2xl border border-muted/10 bg-oat/30 px-4 py-3.5 flex items-center justify-between gap-4"
               >
-                <div>
-                  <div className="font-medium text-espresso">{item.label}</div>
-                  <div className="text-xs text-muted mt-1">{item.help}</div>
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-muted/60 text-[20px] mt-0.5">{item.icon}</span>
+                  <div>
+                    <div className="font-semibold text-espresso text-[15px] leading-snug">{item.label}</div>
+                    <div className="text-xs text-muted mt-0.5 leading-relaxed">{item.help}</div>
+                  </div>
                 </div>
                 <button
                   type="button"
                   aria-pressed={item.value}
                   disabled={moraSaving !== null}
                   onClick={() => patchMoraSetting(item.key as any, !item.value)}
-                  className={`relative h-7 w-12 rounded-full transition-colors ${
+                  className={`relative shrink-0 h-7 w-12 rounded-full transition-colors cursor-pointer ${
                     item.value ? "bg-sage" : "bg-muted/30"
-                  } ${moraSaving === item.key ? "opacity-60" : ""}`}
+                  } ${moraSaving === item.key ? "opacity-60 cursor-wait" : ""}`}
                 >
                   <span
-                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
                       item.value ? "translate-x-6" : "translate-x-1"
                     }`}
                   />
@@ -678,8 +684,8 @@ export default function SettingsPage() {
             ))}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-muted/10 bg-white p-4">
-            <h3 className="text-sm font-bold text-espresso mb-2">Allowed Write Scopes (v1)</h3>
+          <div className="mt-5 rounded-2xl border border-muted/10 bg-oat/30 p-4">
+            <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5">Allowed Write Scopes</h3>
             <div className="flex flex-wrap gap-2 mb-2">
               {["Events", "Reminders", "Notes"].map((scope) => (
                 <span
@@ -690,7 +696,7 @@ export default function SettingsPage() {
                 </span>
               ))}
             </div>
-            <p className="text-xs text-muted">
+            <p className="text-[11px] text-muted">
               PIN / caregiver role controls are planned for a later version.
             </p>
           </div>
