@@ -56,6 +56,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
   const [noteText, setNoteText] = useState("");
   const [weight, setWeight] = useState(0);
   const [height, setHeight] = useState(0);
+  const [headCm, setHeadCm] = useState(0);
   const [sleepStart, setSleepStart] = useState("");
   const [sleepEnd, setSleepEnd] = useState("");
   const [bottleContentType, setBottleContentType] = useState<BottleContentType>("formula");
@@ -172,7 +173,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         break;
       case "growth":
         eventType = "GROWTH";
-        payload = { weightKg: weight, heightCm: height };
+        payload = { weightKg: weight || undefined, heightCm: height || undefined, headCm: headCm || undefined };
         break;
     }
 
@@ -198,6 +199,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     setNoteText("");
     setWeight(0);
     setHeight(0);
+    setHeadCm(0);
     setHasRash(false);
     setHasBlowout(false);
     setDiaperKind("wet");
@@ -877,13 +879,28 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 
               <div className="bg-white rounded-2xl p-4 border border-muted/10">
                 <label htmlFor="growth-height" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
-                  Height (cm)
+                  Height / Length (cm)
                 </label>
                 <input
                   id="growth-height"
                   type="number"
                   value={height || ""}
                   onChange={(e) => setHeight(Number(e.target.value))}
+                  placeholder="0.0"
+                  step="0.1"
+                  className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-sage/20"
+                />
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-muted/10">
+                <label htmlFor="growth-head" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
+                  Head Circumference (cm)
+                </label>
+                <input
+                  id="growth-head"
+                  type="number"
+                  value={headCm || ""}
+                  onChange={(e) => setHeadCm(Number(e.target.value))}
                   placeholder="0.0"
                   step="0.1"
                   className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-sage/20"

@@ -4,13 +4,16 @@ import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatDuration, getDateDaysAgo } from "@/lib/time";
+import GrowthChart from "../components/GrowthChart";
+import type { Gender } from "@/lib/who-percentiles";
 
+type TrendsTab = "24h" | "7d" | "growth";
 type DiaperKindFilter = "all" | "wet" | "dirty" | "dry" | "mixed";
 type DiaperTextureFilter = "all" | "runny" | "mucousy" | "mushy" | "solid" | "pebbles";
 type DiaperColorFilter = "all" | "black" | "green" | "yellow" | "brown" | "red" | "gray";
 
 export default function TrendsPage() {
-  const [timeRange, setTimeRange] = useState<"24h" | "7d">("24h");
+  const [timeRange, setTimeRange] = useState<TrendsTab>("24h");
   const [diaperKindFilter, setDiaperKindFilter] = useState<DiaperKindFilter>("all");
   const [diaperTextureFilter, setDiaperTextureFilter] = useState<DiaperTextureFilter>("all");
   const [diaperColorFilter, setDiaperColorFilter] = useState<DiaperColorFilter>("all");
@@ -74,6 +77,11 @@ export default function TrendsPage() {
           limit: 5000,
         }
       : "skip"
+  );
+
+  const growthEvents = useQuery(
+    api.events.listGrowthEvents,
+    babyId ? { babyId } : "skip"
   );
 
   const matchesDiaperFilters = (event: any) => {
@@ -153,24 +161,22 @@ export default function TrendsPage() {
         </div>
 
         <div className="flex bg-oat p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setTimeRange("24h")}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-              timeRange === "24h" ? "bg-white shadow-sm text-espresso" : "text-muted hover:text-espresso"
-            }`}
-          >
-            24h
-          </button>
-          <button
-            type="button"
-            onClick={() => setTimeRange("7d")}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-              timeRange === "7d" ? "bg-white shadow-sm text-espresso" : "text-muted hover:text-espresso"
-            }`}
-          >
-            7d
-          </button>
+          {([
+            { key: "24h", label: "24h" },
+            { key: "7d", label: "7d" },
+            { key: "growth", label: "Growth" },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTimeRange(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                timeRange === key ? "bg-white shadow-sm text-espresso" : "text-muted hover:text-espresso"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -182,7 +188,7 @@ export default function TrendsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10">
+          {timeRange !== "growth" && <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10">
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-xs font-bold text-muted uppercase tracking-wider mr-2">Diaper Filters</span>
               {(["all", "wet", "dirty", "dry"] as const).map((kind) => (
@@ -236,7 +242,7 @@ export default function TrendsPage() {
                 Rash
               </button>
             </div>
-          </div>
+          </div>}
 
           {timeRange === "24h" ? (
             todayAggregates ? (
@@ -286,6 +292,12 @@ export default function TrendsPage() {
                 <p className="text-muted">No data for today yet</p>
               </div>
             )
+          ) : timeRange === "growth" ? (
+            <GrowthSection
+              events={growthEvents ?? []}
+              dob={babyProfile.dob}
+              gender={(babyProfile.gender as Gender) || "male"}
+            />
           ) : weeklyStats ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
@@ -338,6 +350,71 @@ export default function TrendsPage() {
               <p className="text-muted">No data for the past week</p>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- Growth Section ---- */
+
+function GrowthSection({
+  events,
+  dob,
+  gender,
+}: {
+  events: Array<{ timestamp: string; payload?: any }>;
+  dob: string;
+  gender: Gender;
+}) {
+  const hasWeight = events.some((e) => e.payload?.weightKg);
+  const hasLength = events.some((e) => e.payload?.heightCm);
+  const hasHead = events.some((e) => e.payload?.headCm);
+  const hasAny = hasWeight || hasLength || hasHead;
+
+  const latest = events[events.length - 1]?.payload;
+
+  return (
+    <div className="space-y-5">
+      {/* Summary cards */}
+      {hasAny && (
+        <div className="grid grid-cols-3 gap-3">
+          {latest?.weightKg ? (
+            <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10 text-center">
+              <span className="material-symbols-outlined text-sage text-xl">monitor_weight</span>
+              <div className="text-2xl font-bold text-espresso mt-1">{latest.weightKg}</div>
+              <div className="text-[10px] text-muted font-bold uppercase">kg</div>
+            </div>
+          ) : null}
+          {latest?.heightCm ? (
+            <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10 text-center">
+              <span className="material-symbols-outlined text-dusty-blue text-xl">straighten</span>
+              <div className="text-2xl font-bold text-espresso mt-1">{latest.heightCm}</div>
+              <div className="text-[10px] text-muted font-bold uppercase">cm</div>
+            </div>
+          ) : null}
+          {latest?.headCm ? (
+            <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10 text-center">
+              <span className="material-symbols-outlined text-clay text-xl">face</span>
+              <div className="text-2xl font-bold text-espresso mt-1">{latest.headCm}</div>
+              <div className="text-[10px] text-muted font-bold uppercase">cm head</div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Charts */}
+      <GrowthChart events={events} dob={dob} gender={gender} metric="weight" />
+      <GrowthChart events={events} dob={dob} gender={gender} metric="length" />
+      <GrowthChart events={events} dob={dob} gender={gender} metric="head" />
+
+      {!hasAny && (
+        <div className="bg-white rounded-[20px] p-8 text-center shadow-sm border border-muted/10">
+          <span className="material-symbols-outlined text-4xl text-muted/30 mb-3">straighten</span>
+          <h3 className="font-bold text-espresso mb-1">No growth data yet</h3>
+          <p className="text-sm text-muted">
+            Log weight, length, or head circumference in the Quick Logger to see WHO percentile charts.
+          </p>
         </div>
       )}
     </div>

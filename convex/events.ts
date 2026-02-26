@@ -698,6 +698,23 @@ export const computeUpcomingReminders = query({
   },
 });
 
+export const listGrowthEvents = query({
+  args: {
+    babyId: v.id("babyProfiles"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("events")
+      .withIndex("by_babyId_type", (q) =>
+        q.eq("babyId", args.babyId)
+      )
+      .filter((q) => q.eq(q.field("type"), "GROWTH"))
+      .order("asc")
+      .take(args.limit ?? 200);
+  },
+});
+
 export const exportBabyData = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
