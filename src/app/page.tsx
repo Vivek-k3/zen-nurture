@@ -10,14 +10,14 @@ import { useLiveTimer, formatElapsed, formatElapsedCompact } from "@/hooks/useLi
 import ActivityFeed from "./components/ActivityFeed";
 import WeeklyDigestCard from "./components/WeeklyDigestCard";
 import NudgeBanner from "./components/NudgeBanner";
+import { useBaby } from "@/components/BabyContext";
 
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
   const todayStr = new Date().toISOString().split("T")[0];
-  const babyId = babyProfile?._id;
 
   const lastEvents = useQuery(
     api.events.getLastEventsByTypes,

@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import ActivityFeed from "./ActivityFeed";
+import BabySwitcher from "@/components/BabySwitcher";
+import { useBaby } from "@/components/BabyContext";
 
 type NavItemProps = {
   path: string;
@@ -36,23 +38,16 @@ function NavItem({ path, icon, label, exact = false, pathname }: NavItemProps) {
 
 const Sidebar = () => {
   const pathname = usePathname() ?? "";
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
-  const babyId = babyProfile?._id;
+  const { activeBabyId: babyId } = useBaby();
 
   return (
     <div className="hidden lg:flex flex-col w-20 xl:w-72 border-r border-muted/20 p-4 gap-6 bg-oat z-0 h-screen">
-      <div className="flex items-center gap-3 px-2 mb-2">
-        <div
-          className="bg-center bg-no-repeat bg-cover rounded-full h-10 w-10 shrink-0 shadow-sm ring-2 ring-white"
-          style={{ backgroundImage: 'url("https://picsum.photos/seed/baby/200/200")' }}
-        ></div>
-        <div className="hidden xl:flex flex-col">
-          <h1 className="text-espresso text-base font-bold font-serif tracking-wide">
-            Zen Nurture
-          </h1>
-          <p className="text-muted text-[10px] uppercase tracking-wider font-bold">
-            Care OS
-          </p>
+      <div className="px-1 mb-2">
+        <div className="hidden xl:block">
+          <BabySwitcher />
+        </div>
+        <div className="xl:hidden flex justify-center">
+          <BabySwitcher compact />
         </div>
       </div>
 
