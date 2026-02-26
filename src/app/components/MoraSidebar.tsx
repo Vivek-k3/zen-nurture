@@ -51,11 +51,36 @@ function MoraRuntimeProvider({
   const families = useQuery(api.families.listMyFamilies, {});
   const familyName = families?.[0]?.name;
 
+  const createThread = useMutation(api.mora.getOrCreateMoraThread);
+  const closeThread = useMutation(api.mora.closeMoraThread);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const prevThreadRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setThreadId(null);
+    void (async () => {
+      try {
+        if (prevThreadRef.current) {
+          await closeThread({ threadId: prevThreadRef.current as any });
+        }
+        const thread = await createThread({ babyId: babyProfile?._id } as any);
+        if (active && thread?._id) {
+          setThreadId(thread._id);
+          prevThreadRef.current = thread._id;
+        }
+      } catch {}
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey, babyProfile?._id]);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/mora",
         body: {
+          threadId,
           clientContext: {
             pathname,
             pageLabel,
@@ -69,9 +94,8 @@ function MoraRuntimeProvider({
           },
         },
       }),
-    // sessionKey forces a new transport (new chat) on "Start New"
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pathname, pageLabel, sessionKey]
+    [pathname, pageLabel, sessionKey, threadId]
   );
 
   const runtime = useChatRuntime({ transport });
