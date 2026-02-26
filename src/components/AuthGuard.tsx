@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -18,11 +18,20 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     session ? {} : "skip"
   );
 
-  if (PUBLIC_PATHS.includes(pathname)) {
-    return <>{children}</>;
-  }
+  const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isOnboarding = pathname === "/onboarding";
+  const needsLogin = !isPending && !session && !isPublic;
+  const needsOnboarding =
+    !isPending && !!session && !isOnboarding && !isPublic && families !== undefined && families.length === 0;
 
-  if (isPending) {
+  useEffect(() => {
+    if (needsLogin) router.push("/sign-in");
+    else if (needsOnboarding) router.push("/onboarding");
+  }, [needsLogin, needsOnboarding, router]);
+
+  if (isPublic) return <>{children}</>;
+
+  if (isPending || needsLogin || needsOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-oat">
         <div className="text-center">
@@ -33,20 +42,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         </div>
       </div>
     );
-  }
-
-  if (!session) {
-    router.push("/sign-in");
-    return null;
-  }
-
-  if (pathname === "/onboarding") {
-    return <>{children}</>;
-  }
-
-  if (families !== undefined && families.length === 0) {
-    router.push("/onboarding");
-    return null;
   }
 
   return <>{children}</>;
