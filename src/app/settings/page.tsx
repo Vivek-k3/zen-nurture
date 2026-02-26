@@ -6,6 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { CAREGIVER_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
+import { Switch } from "@/components/ui/switch";
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -665,21 +666,11 @@ export default function SettingsPage() {
                     <div className="text-xs text-muted mt-0.5 leading-relaxed">{item.help}</div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  aria-pressed={item.value}
+                <Switch
+                  checked={item.value}
                   disabled={moraSaving !== null}
-                  onClick={() => patchMoraSetting(item.key as any, !item.value)}
-                  className={`relative shrink-0 h-7 w-12 rounded-full transition-colors cursor-pointer ${
-                    item.value ? "bg-sage" : "bg-muted/30"
-                  } ${moraSaving === item.key ? "opacity-60 cursor-wait" : ""}`}
-                >
-                  <span
-                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                      item.value ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                  onCheckedChange={(v) => patchMoraSetting(item.key as any, v)}
+                />
               </div>
             ))}
           </div>
