@@ -13,6 +13,7 @@ import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
 import type * as mora from "../mora.js";
+import type * as push from "../push.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   families: typeof families;
   http: typeof http;
   mora: typeof mora;
+  push: typeof push;
 }>;
 
 /**

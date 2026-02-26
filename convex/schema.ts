@@ -115,6 +115,18 @@ export default defineSchema({
     .index("by_babyId", ["babyId"])
     .index("by_tags", ["tags"]),
 
+  pushSubscriptions: defineTable({
+    userId: v.string(),
+    endpoint: v.string(),
+    keys: v.object({
+      p256dh: v.string(),
+      auth: v.string(),
+    }),
+    createdAt: v.string(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_endpoint", ["endpoint"]),
+
   settings: defineTable({
     key: v.string(),
     value: v.any(),

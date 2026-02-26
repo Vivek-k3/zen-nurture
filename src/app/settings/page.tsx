@@ -7,6 +7,7 @@ import { CAREGIVER_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { Switch } from "@/components/ui/switch";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -30,6 +31,7 @@ export default function SettingsPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
+  const push = usePushNotifications();
 
   useEffect(() => {
     setMounted(true);
@@ -614,6 +616,50 @@ export default function SettingsPage() {
                 </div>
                 <span className="material-symbols-outlined text-alert-red">chevron_right</span>
               </button>
+            </div>
+          </section>
+        )}
+
+        {push.state !== "unsupported" && (
+          <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-espresso">Notifications</h2>
+                <p className="text-sm text-muted mt-1">
+                  Get push alerts for feeding reminders, medicine schedules, and more.
+                </p>
+              </div>
+              <div className="h-10 w-10 shrink-0 rounded-full bg-sage/10 text-sage flex items-center justify-center">
+                <span className="material-symbols-outlined">notifications</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-muted/10 bg-oat/30 px-4 py-3.5 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-muted/60 text-[20px] mt-0.5">
+                  {push.state === "granted" ? "notifications_active" : push.state === "denied" ? "notifications_off" : "notifications"}
+                </span>
+                <div>
+                  <div className="font-semibold text-espresso text-[15px] leading-snug">
+                    Push Notifications
+                  </div>
+                  <div className="text-xs text-muted mt-0.5 leading-relaxed">
+                    {push.state === "granted"
+                      ? "Enabled — you'll receive alerts on this device."
+                      : push.state === "denied"
+                      ? "Blocked by browser. Enable in browser settings."
+                      : "Enable to get reminder alerts on this device."}
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={push.state === "granted"}
+                disabled={push.state === "denied" || push.state === "loading"}
+                onCheckedChange={(checked) => {
+                  if (checked) push.subscribe();
+                  else push.unsubscribe();
+                }}
+              />
             </div>
           </section>
         )}

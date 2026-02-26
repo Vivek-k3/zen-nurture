@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
 import UserMenu from "./components/UserMenu";
+import NotificationBell from "./components/NotificationBell";
 import MoraOrb from "@/components/MoraOrb";
 
 const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
@@ -68,6 +69,9 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold">Mora</span>
             </button>
 
+            <div className="relative">
+              <NotificationBell />
+            </div>
             <UserMenu />
           </div>
         </header>
