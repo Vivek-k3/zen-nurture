@@ -5,9 +5,12 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   useMessage,
+  useComposerRuntime,
 } from "@assistant-ui/react";
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import MoraOrb from "@/components/MoraOrb";
+import VoiceButton from "./VoiceButton";
 
 interface MoraThreadProps {
   quickPrompts: string[];
@@ -125,11 +128,22 @@ function InProgressIndicator() {
 /* ---------- Composer ---------- */
 
 function MoraComposer() {
+  const composerRuntime = useComposerRuntime();
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      composerRuntime.setText(text);
+      composerRuntime.send();
+    },
+    [composerRuntime]
+  );
+
   return (
     <div className="border-t border-black/5 bg-white/70 backdrop-blur-sm p-3">
       <ComposerPrimitive.Root className="flex items-end gap-2">
+        <VoiceButton onTranscript={handleVoiceTranscript} />
         <ComposerPrimitive.Input
-          placeholder="Ask Mora..."
+          placeholder="Ask Mora or tap mic..."
           rows={1}
           autoFocus
           className="flex-1 resize-none rounded-2xl bg-[#fffefb] border border-muted/10 px-4 py-2.5 text-[13px] text-espresso leading-relaxed placeholder:text-muted/50 focus:outline-none focus:border-sage/30 max-h-32"
@@ -141,7 +155,7 @@ function MoraComposer() {
         </ComposerPrimitive.Send>
       </ComposerPrimitive.Root>
       <p className="text-[10px] text-muted mt-1.5 px-1">
-        Mora reads live + historic data and proposes approved changes.
+        Tap mic to speak or type. Mora reads live data and proposes changes.
       </p>
     </div>
   );
