@@ -241,6 +241,7 @@ const READ_TOOLS = [
   "get_baby_profile", "get_recent_events", "get_historic_events",
   "get_daily_summary", "get_range_summary", "get_reminders",
   "get_last_events_by_type", "search_records", "analyze_patterns",
+  "generate_weekly_digest",
 ] as const;
 
 function PatternAnalysisUI({ status, result }: { status: string; result: any }) {
@@ -289,8 +290,74 @@ function PatternAnalysisUI({ status, result }: { status: string; result: any }) 
   );
 }
 
+function DigestUI({ status, result }: { status: string; result: any }) {
+  const isDone = status === "complete";
+  const data = normalize(result);
+
+  if (!isDone) {
+    return (
+      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+        <MoraOrb size="xs" state="thinking" />
+        <span className="font-medium text-espresso">Generating weekly digest...</span>
+      </div>
+    );
+  }
+
+  if (!data?.thisWeek || !data?.lastWeek) {
+    return (
+      <div className="my-2 rounded-xl border border-muted/15 bg-oat/40 p-3 text-[12px]">
+        <span className="text-muted">No data available for digest.</span>
+      </div>
+    );
+  }
+
+  const tw = data.thisWeek;
+  const lw = data.lastWeek;
+
+  return (
+    <div className="my-2 rounded-xl border border-sage/20 bg-white p-3 shadow-sm text-[12px] space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="material-symbols-outlined text-sage text-[16px]">summarize</span>
+        <span className="font-semibold text-espresso">Weekly Comparison</span>
+        <span className="text-muted text-[10px] ml-auto">{tw.from} → {tw.to}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <CompStat label="Feeds/day" current={tw.feeds.perDay} previous={lw.feeds.perDay} />
+        <CompStat label="Intake/day" current={Math.round(tw.feeds.totalMl / Math.max(1, daysBetween(tw.from, tw.to)))} previous={Math.round(lw.feeds.totalMl / Math.max(1, daysBetween(lw.from, lw.to)))} unit="ml" />
+        <CompStat label="Diapers/day" current={tw.diapers.perDay} previous={lw.diapers.perDay} />
+        <CompStat label="Sleep/day" current={tw.sleep.avgPerDay} previous={lw.sleep.avgPerDay} unit="h" />
+        <CompStat label="Meds adh." current={tw.meds.adherence} previous={lw.meds.adherence} unit="%" />
+        <div className="text-center py-1">
+          <p className="text-[10px] text-muted">Events</p>
+          <p className="font-mono font-bold text-espresso">{tw.totalEvents}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompStat({ label, current, previous, unit = "" }: { label: string; current: number; previous: number; unit?: string }) {
+  const diff = current - previous;
+  const arrow = diff > 0 ? "↑" : diff < 0 ? "↓" : "→";
+  const color = diff > 0 ? "text-sage" : diff < 0 ? "text-alert-red" : "text-muted";
+
+  return (
+    <div className="py-1">
+      <p className="text-[10px] text-muted">{label}</p>
+      <p className="font-mono font-bold text-espresso">{current}{unit}</p>
+      <p className={`text-[10px] font-semibold ${color}`}>{arrow} {Math.abs(Math.round(diff * 10) / 10)}{unit}</p>
+    </div>
+  );
+}
+
+function daysBetween(from: string, to: string) {
+  return Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+}
+
+const CUSTOM_TOOL_NAMES = ["analyze_patterns", "generate_weekly_digest"];
+
 const toolUIs = [
-  ...READ_TOOLS.filter((t) => t !== "analyze_patterns").map((toolName) =>
+  ...READ_TOOLS.filter((t) => !CUSTOM_TOOL_NAMES.includes(t)).map((toolName) =>
     makeAssistantToolUI({
       toolName,
       render: ({ status }) => <ReadToolUI name={toolName} status={status.type} />,
@@ -299,6 +366,10 @@ const toolUIs = [
   makeAssistantToolUI({
     toolName: "analyze_patterns",
     render: ({ status, result }) => <PatternAnalysisUI status={status.type} result={result} />,
+  }),
+  makeAssistantToolUI({
+    toolName: "generate_weekly_digest",
+    render: ({ status, result }) => <DigestUI status={status.type} result={result} />,
   }),
   makeAssistantToolUI({
     toolName: "create_event",

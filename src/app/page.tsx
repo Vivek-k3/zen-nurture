@@ -8,6 +8,7 @@ import { formatDateFull, formatBabyAge } from "@/lib/time";
 import { EVENT_TYPES } from "@/lib/constants";
 import { useLiveTimer, formatElapsed, formatElapsedCompact } from "@/hooks/useLiveTimer";
 import ActivityFeed from "./components/ActivityFeed";
+import WeeklyDigestCard from "./components/WeeklyDigestCard";
 
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
@@ -180,6 +181,11 @@ export default function TodayPage() {
               </div>
             </div>
           )}
+
+          {/* Weekly Digest */}
+          <div className="mb-8">
+            <WeeklyDigestCard babyId={babyId} />
+          </div>
 
           {/* Activity Feed */}
           <div className="mb-8">

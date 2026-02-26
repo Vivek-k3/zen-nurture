@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as digest from "../digest.js";
 import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
@@ -23,6 +24,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  digest: typeof digest;
   events: typeof events;
   families: typeof families;
   http: typeof http;

@@ -115,6 +115,18 @@ export default defineSchema({
     .index("by_babyId", ["babyId"])
     .index("by_tags", ["tags"]),
 
+  weeklyDigests: defineTable({
+    babyId: v.id("babyProfiles"),
+    weekStart: v.string(),
+    weekEnd: v.string(),
+    thisWeek: v.any(),
+    lastWeek: v.any(),
+    summary: v.string(),
+    createdAt: v.string(),
+  })
+    .index("by_babyId", ["babyId"])
+    .index("by_babyId_weekStart", ["babyId", "weekStart"]),
+
   pushSubscriptions: defineTable({
     userId: v.string(),
     endpoint: v.string(),

@@ -179,6 +179,10 @@ export async function POST(req: Request) {
     "- If the user agrees, use create_reminder with the suggested triggerConfig from analyze_patterns.",
     "- Compare with existing reminders to avoid duplicates.",
     "",
+    "## Weekly Digest",
+    "- When user asks for a weekly summary/report/digest, use generate_weekly_digest.",
+    "- Present the comparison in a friendly, scannable format with highlights and concerns.",
+    "",
     "## Boundaries",
     "- Never propose unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
     "- Never fabricate data. If a tool returns empty, say so.",
@@ -563,6 +567,27 @@ export async function POST(req: Request) {
               triggerType: r.triggerType,
               enabled: r.enabled,
             })),
+          };
+        },
+      }),
+      generate_weekly_digest: tool({
+        description:
+          "Generate a weekly digest comparing this week vs last week. " +
+          "Returns stats comparison and an AI-written summary. " +
+          "Use when user asks for a weekly summary, report, or digest.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, {});
+          if (!profile?._id) return { error: "No baby profile" };
+
+          const comparison = await convex.query(api.digest.getWeeklyComparison, {
+            babyId: profile._id,
+          });
+
+          return {
+            babyName: profile.name,
+            ...comparison,
+            hint: "Present this data as a friendly weekly digest. Compare this week vs last week. Highlight improvements and flag any concerns.",
           };
         },
       }),
