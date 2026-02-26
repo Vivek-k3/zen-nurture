@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { DIAPER_COLORS, DIAPER_TEXTURES } from "@/lib/constants";
+import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
+import { Switch } from "@/components/ui/switch";
 
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
@@ -62,6 +63,12 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
   const [formulaCompany, setFormulaCompany] = useState("");
   const [formulaType, setFormulaType] = useState("");
   const [formulaName, setFormulaName] = useState("");
+  const [medName, setMedName] = useState("");
+  const [medCustomName, setMedCustomName] = useState("");
+  const [medDoseValue, setMedDoseValue] = useState(1);
+  const [medDoseUnit, setMedDoseUnit] = useState("ml");
+  const [medOutcome, setMedOutcome] = useState<"taken" | "skipped" | "vomited">("taken");
+  const [isSleepingNow, setIsSleepingNow] = useState(false);
 
   const babyProfile = useQuery(api.events.getBabyProfile, {});
   const createEvent = useMutation(api.events.createEvent);
@@ -141,16 +148,24 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         break;
       case "sleep":
         eventType = "SLEEP";
-        payload = { 
-          startTs: sleepStart || timestamp, 
-          endTs: sleepEnd || null,
-          kind: "nap" 
+        payload = {
+          startTs: isSleepingNow ? timestamp : (sleepStart ? new Date(sleepStart).toISOString() : timestamp),
+          endTs: isSleepingNow ? null : (sleepEnd ? new Date(sleepEnd).toISOString() : null),
+          kind: "nap",
         };
         break;
-      case "meds":
+      case "meds": {
+        const finalMedName = medName === "__custom__" ? medCustomName.trim() : medName;
+        if (!finalMedName) return;
         eventType = "MED_DOSE";
-        payload = { medicineName: "Medicine", doseValue: 1, doseUnit: "ml", outcome: "taken" };
+        payload = {
+          medicineName: finalMedName,
+          doseValue: medDoseValue,
+          doseUnit: medDoseUnit,
+          outcome: medOutcome,
+        };
         break;
+      }
       case "note":
         eventType = "NOTE";
         payload = { text: noteText };
@@ -196,6 +211,12 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     setFormulaCompany("");
     setFormulaType("");
     setFormulaName("");
+    setMedName("");
+    setMedCustomName("");
+    setMedDoseValue(1);
+    setMedDoseUnit("ml");
+    setMedOutcome("taken");
+    setIsSleepingNow(false);
   };
 
   useEffect(() => {
@@ -616,81 +637,213 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
               </div>
 
               <div className="bg-white rounded-2xl border border-muted/10 divide-y divide-muted/10">
-                <label htmlFor="blowout" className="px-4 py-3 flex items-center justify-between cursor-pointer">
-                  <span className="text-base font-medium text-espresso">Blowout</span>
-                  <input
-                    id="blowout"
-                    type="checkbox"
-                    checked={hasBlowout}
-                    onChange={(e) => setHasBlowout(e.target.checked)}
-                    className="h-5 w-5 rounded text-sage focus:ring-sage"
-                  />
-                </label>
-
-                <label htmlFor="rash" className="px-4 py-3 flex items-center justify-between cursor-pointer">
-                  <span className="text-base font-medium text-espresso">Diaper Rash</span>
-                  <input
-                    id="rash"
-                    type="checkbox"
-                    checked={hasRash}
-                    onChange={(e) => setHasRash(e.target.checked)}
-                    className="h-5 w-5 rounded text-sage focus:ring-sage"
-                  />
-                </label>
+                <div className="px-4 py-3.5 flex items-center justify-between">
+                  <div>
+                    <span className="text-base font-medium text-espresso">Blowout</span>
+                    <p className="text-xs text-muted mt-0.5">Leaked outside diaper</p>
+                  </div>
+                  <Switch checked={hasBlowout} onCheckedChange={setHasBlowout} />
+                </div>
+                <div className="px-4 py-3.5 flex items-center justify-between">
+                  <div>
+                    <span className="text-base font-medium text-espresso">Diaper Rash</span>
+                    <p className="text-xs text-muted mt-0.5">Redness or irritation</p>
+                  </div>
+                  <Switch checked={hasRash} onCheckedChange={setHasRash} />
+                </div>
               </div>
             </div>
           )}
 
           {view === "sleep" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <div className="space-y-4">
-                <div className="bg-white rounded-2xl p-4 border border-muted/10">
-                  <label htmlFor="sleep-start" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
-                    Sleep Start
-                  </label>
-                  <input
-                    id="sleep-start"
-                    type="datetime-local"
-                    value={sleepStart}
-                    onChange={(e) => setSleepStart(e.target.value)}
-                    className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
-                  />
-                </div>
-
-                <div className="bg-white rounded-2xl p-4 border border-muted/10">
-                  <label htmlFor="sleep-end" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
-                    Sleep End (optional)
-                  </label>
-                  <input
-                    id="sleep-end"
-                    type="datetime-local"
-                    value={sleepEnd}
-                    onChange={(e) => setSleepEnd(e.target.value)}
-                    className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
-                  />
-                </div>
-              </div>
-
+              {/* Sleeping now toggle */}
               <button
                 type="button"
                 onClick={() => {
-                  const now = new Date();
-                  const start = new Date(now.getTime() - 60 * 60 * 1000);
-                  setSleepStart(start.toISOString().slice(0, 16));
-                  setSleepEnd(now.toISOString().slice(0, 16));
+                  setIsSleepingNow(!isSleepingNow);
+                  if (!isSleepingNow) {
+                    setSleepStart("");
+                    setSleepEnd("");
+                  }
                 }}
-                className="w-full py-3 rounded-xl bg-night/5 text-night font-medium hover:bg-night/10 transition-colors"
+                className={`w-full py-5 rounded-2xl flex flex-col items-center gap-2 transition-all border ${
+                  isSleepingNow
+                    ? "bg-night/10 border-night/30 text-night"
+                    : "bg-white border-muted/10 text-muted hover:border-night/20"
+                }`}
               >
-                Quick: Log 1 hour nap
+                <span className="material-symbols-outlined text-3xl">
+                  {isSleepingNow ? "bedtime" : "bedtime_off"}
+                </span>
+                <span className="font-bold text-lg text-espresso">
+                  {isSleepingNow ? "Baby is sleeping..." : "Tap to start sleep"}
+                </span>
+                {isSleepingNow && (
+                  <span className="text-sm text-night/70">Sleep started now. Tap Save to log.</span>
+                )}
               </button>
+
+              {!isSleepingNow && (
+                <>
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="h-px flex-1 bg-muted/15" />
+                    <span className="text-[11px] text-muted font-bold uppercase">or log past sleep</span>
+                    <div className="h-px flex-1 bg-muted/15" />
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-white rounded-2xl p-4 border border-muted/10">
+                      <label htmlFor="sleep-start" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
+                        Sleep Start
+                      </label>
+                      <input
+                        id="sleep-start"
+                        type="datetime-local"
+                        value={sleepStart}
+                        onChange={(e) => setSleepStart(e.target.value)}
+                        className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
+                      />
+                    </div>
+
+                    <div className="bg-white rounded-2xl p-4 border border-muted/10">
+                      <label htmlFor="sleep-end" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
+                        Woke Up
+                      </label>
+                      <input
+                        id="sleep-end"
+                        type="datetime-local"
+                        value={sleepEnd}
+                        onChange={(e) => setSleepEnd(e.target.value)}
+                        className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {[
+                      { label: "30min nap", mins: 30 },
+                      { label: "1hr nap", mins: 60 },
+                      { label: "2hr nap", mins: 120 },
+                    ].map(({ label, mins }) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const start = new Date(now.getTime() - mins * 60 * 1000);
+                          setSleepStart(start.toISOString().slice(0, 16));
+                          setSleepEnd(now.toISOString().slice(0, 16));
+                        }}
+                        className="flex-1 py-2.5 rounded-xl bg-night/5 text-night text-sm font-medium hover:bg-night/10 transition-colors"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {view === "meds" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <p className="text-muted text-center py-8">
-                Medicine logging coming soon. Track dosage and medications here.
-              </p>
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-muted uppercase tracking-wider">Medicine</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {DEFAULT_MEDICINES.map((med) => (
+                    <button
+                      key={med}
+                      type="button"
+                      onClick={() => setMedName(med)}
+                      className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${
+                        medName === med
+                          ? "bg-alert-red/10 border-alert-red/30 border text-alert-red"
+                          : "bg-white border border-muted/10 text-espresso hover:border-alert-red/20"
+                      }`}
+                    >
+                      {med}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMedName("__custom__")}
+                    className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${
+                      medName === "__custom__"
+                        ? "bg-alert-red/10 border-alert-red/30 border text-alert-red"
+                        : "bg-white border border-muted/10 text-muted hover:border-alert-red/20"
+                    }`}
+                  >
+                    + Other
+                  </button>
+                </div>
+                {medName === "__custom__" && (
+                  <input
+                    type="text"
+                    value={medCustomName}
+                    onChange={(e) => setMedCustomName(e.target.value)}
+                    placeholder="Medicine name"
+                    className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-alert-red/20"
+                    autoFocus
+                  />
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl p-5 border border-muted/10 space-y-4 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label htmlFor="med-dose" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
+                      Dose
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="med-dose"
+                        type="number"
+                        value={medDoseValue || ""}
+                        onChange={(e) => setMedDoseValue(Number(e.target.value))}
+                        min={0}
+                        step={0.5}
+                        className="w-24 p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg text-center focus:outline-none focus:ring-2 focus:ring-alert-red/20"
+                      />
+                      <select
+                        value={medDoseUnit}
+                        onChange={(e) => setMedDoseUnit(e.target.value)}
+                        className="p-3 rounded-xl bg-oat/50 text-espresso font-medium focus:outline-none"
+                      >
+                        <option value="ml">ml</option>
+                        <option value="drops">drops</option>
+                        <option value="tablet">tablet</option>
+                        <option value="tsp">tsp</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-muted uppercase tracking-wider">Outcome</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {([
+                    { key: "taken", icon: "check_circle", label: "Taken", color: "sage" },
+                    { key: "skipped", icon: "cancel", label: "Skipped", color: "muted" },
+                    { key: "vomited", icon: "warning", label: "Vomited", color: "alert-red" },
+                  ] as const).map(({ key, icon, label, color }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setMedOutcome(key)}
+                      className={`py-4 rounded-2xl flex flex-col items-center gap-1 text-sm font-bold transition-all ${
+                        medOutcome === key
+                          ? `bg-${color}/10 border-${color}/30 border text-${color}`
+                          : "bg-white border border-muted/10 text-muted hover:border-muted/30"
+                      }`}
+                    >
+                      <span className={`material-symbols-outlined text-lg ${medOutcome === key ? `text-${color}` : ""}`}>{icon}</span>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -740,7 +893,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
           )}
         </div>
 
-        {view !== "menu" && view !== "meds" && (
+        {view !== "menu" && (
           <div className="p-6 border-t border-muted/10 bg-white/80 backdrop-blur-md">
             <button
               type="button"
