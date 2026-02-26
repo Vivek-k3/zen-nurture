@@ -167,13 +167,13 @@ export default function TodayPage() {
         <div className="bg-white rounded-[20px] p-8 text-center shadow-sm border border-muted/10">
           <span className="material-symbols-outlined text-5xl text-sage mb-4">child_friendly</span>
           <h3 className="text-xl font-bold text-espresso mb-2">Welcome to Zen Nurture</h3>
-          <p className="text-muted mb-6">Add your baby's profile to start tracking</p>
+          <p className="text-muted mb-6">Complete setup to start tracking</p>
           <Link
-            href="/settings"
+            href="/onboarding"
             className="inline-flex items-center gap-2 bg-sage text-white px-6 py-3 rounded-full font-bold hover:bg-sage/90 transition-colors"
           >
             <span className="material-symbols-outlined">add</span>
-            Add Baby
+            Get Started
           </Link>
         </div>
       ) : (

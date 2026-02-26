@@ -27,7 +27,7 @@ export default function SignUpPage() {
       if (result.error) {
         setError(result.error.message ?? "Sign up failed");
       } else {
-        router.push("/");
+        router.push("/onboarding");
       }
     } catch (err: any) {
       setError(err.message ?? "Sign up failed");

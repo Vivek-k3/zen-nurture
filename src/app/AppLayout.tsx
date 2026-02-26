@@ -7,7 +7,7 @@ import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
 import UserMenu from "./components/UserMenu";
 
-const AUTH_PATHS = ["/sign-in", "/sign-up"];
+const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
 function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
@@ -119,7 +119,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  if (AUTH_PATHS.includes(pathname)) {
+  if (CHROMELESS_PATHS.includes(pathname)) {
     return <>{children}</>;
   }
 
