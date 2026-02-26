@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
-
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
@@ -12,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import MoraOrb from "@/components/MoraOrb";
 import MoraThread from "./mora/MoraThread";
 import MoraToolUIs from "./mora/MoraToolUIs";
+import { authClient } from "@/lib/auth-client";
 
 interface MoraSidebarProps {
   isOpen: boolean;
@@ -28,31 +28,28 @@ function getPageLabel(pathname: string) {
 }
 
 const QUICK_PROMPTS: Record<string, string[]> = {
-  Today: [
-    "Summarize the last 24h",
-    "What should I log next?",
-  ],
-  Trends: [
-    "Analyze last 7 days",
-    "Any feeding patterns?",
-  ],
-  Reminders: [
-    "Show upcoming reminders",
-    "Create a 9 AM vitamin reminder",
-  ],
-  Records: [
-    "Find notes about rash",
-    "Summarize recent meds",
-  ],
-  Settings: [
-    "Explain YOLO mode",
-    "What can Mora update?",
-  ],
+  Today: ["Summarize the last 24h", "What should I log next?"],
+  Trends: ["Analyze last 7 days", "Any feeding patterns?"],
+  Reminders: ["Show upcoming reminders", "Create a 9 AM vitamin reminder"],
+  Records: ["Find notes about rash", "Summarize recent meds"],
+  Settings: ["Explain YOLO mode", "What can Mora update?"],
   Unknown: ["What can you help with?"],
 };
 
-function MoraRuntimeProvider({ children, pathname }: { children: React.ReactNode; pathname: string }) {
+function MoraRuntimeProvider({
+  children,
+  pathname,
+  sessionKey,
+}: {
+  children: React.ReactNode;
+  pathname: string;
+  sessionKey: number;
+}) {
   const pageLabel = getPageLabel(pathname);
+  const { data: session } = authClient.useSession();
+  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const families = useQuery(api.families.listMyFamilies, {});
+  const familyName = families?.[0]?.name;
 
   const transport = useMemo(
     () =>
@@ -63,10 +60,18 @@ function MoraRuntimeProvider({ children, pathname }: { children: React.ReactNode
             pathname,
             pageLabel,
             timestamp: new Date().toISOString(),
+            userName: session?.user?.name ?? undefined,
+            userEmail: session?.user?.email ?? undefined,
+            babyName: babyProfile?.name ?? undefined,
+            babyDob: babyProfile?.dob ?? undefined,
+            babyTimezone: babyProfile?.timezone ?? undefined,
+            familyName: familyName ?? undefined,
           },
         },
       }),
-    [pathname, pageLabel]
+    // sessionKey forces a new transport (new chat) on "Start New"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pathname, pageLabel, sessionKey]
   );
 
   const runtime = useChatRuntime({ transport });
@@ -84,6 +89,11 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
   const pageLabel = getPageLabel(pathname);
   const panelRef = useRef<HTMLDivElement>(null);
   const settings = useQuery(api.mora.getMoraSettings, {});
+  const [sessionKey, setSessionKey] = useState(0);
+
+  const handleStartNew = useCallback(() => {
+    setSessionKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -123,8 +133,8 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
         className="fixed inset-y-0 right-0 z-50 w-full md:w-[520px] bg-[#FEFCF8] shadow-2xl border-l border-black/5 flex flex-col animate-in slide-in-from-right duration-300"
       >
         {/* Header */}
-        <div className="border-b border-black/5 px-4 md:px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
+        <div className="border-b border-black/5 px-4 md:px-5 py-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <MoraOrb size="sm" state="idle" />
               <div>
@@ -132,13 +142,22 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
                 <p className="text-[11px] text-muted">AI copilot &middot; {pageLabel}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
                 yoloOn ? "bg-alert-red/8 text-alert-red border-alert-red/20" : "bg-sage/8 text-sage border-sage/20"
               }`}>
                 {yoloOn ? "YOLO" : "Safe"}
               </span>
-              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close Mora" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleStartNew}
+                className="h-7 px-2 text-[11px] text-muted hover:text-espresso gap-1"
+              >
+                <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                New
+              </Button>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close" className="h-8 w-8">
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </Button>
             </div>
@@ -163,7 +182,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
             </div>
           </div>
         ) : (
-          <MoraRuntimeProvider pathname={pathname}>
+          <MoraRuntimeProvider pathname={pathname} sessionKey={sessionKey}>
             <MoraThread quickPrompts={prompts} />
           </MoraRuntimeProvider>
         )}

@@ -14,6 +14,12 @@ type MoraClientContext = {
   pathname?: string;
   pageLabel?: string;
   timestamp?: string;
+  userName?: string;
+  userEmail?: string;
+  babyName?: string;
+  babyDob?: string;
+  babyTimezone?: string;
+  familyName?: string;
 };
 
 function getConvex() {
@@ -158,22 +164,34 @@ export async function POST(req: Request) {
   const moraSettings = await convex.query(api.mora.getMoraSettings, {});
 
   const system = [
-    "You are Mora, an AI assistant inside Zen Nurture (a baby care tracker).",
-    "Be concise, platform-aware, and action-oriented. Use tools for factual answers.",
-    "When user requests a data change, use the appropriate write tool instead of describing manual steps.",
-    "Never propose or execute unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
-    `Current page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "unknown"})`,
-    pageCapabilities(clientContext.pageLabel),
-    `Mora settings: enabled=${moraSettings.enabled}, yoloMode=${moraSettings.yoloMode}, allowWrites=${moraSettings.allowWrites}`,
-    `Known baby profile: ${babyProfile ? `${babyProfile.name || "Unnamed"} (timezone ${babyProfile.timezone || "unknown"})` : "none"}`,
-    `Recent event count (24h snapshot): ${recentEvents?.length ?? 0}`,
-    `Upcoming reminders snapshot count: ${upcomingReminders?.length ?? 0}`,
+    "You are Mora, an AI caregiver copilot inside Zen Nurture — a calm, India-first baby care tracker.",
+    "",
+    "## Personality",
+    "- Warm, concise, action-oriented. Use tools for factual answers instead of guessing.",
+    "- Address the user by first name when known. Reference the baby by name.",
+    "- When the user requests a data change, use the appropriate write tool — never describe manual steps.",
+    "- In YOLO mode, actions execute immediately. In Safe mode, actions require human approval — tell the user you've queued it.",
+    "",
+    "## Boundaries",
+    "- Never propose unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
+    "- Never fabricate data. If a tool returns empty, say so.",
+    "",
+    "## Current Context",
+    `- User: ${clientContext.userName || "Unknown"} (${clientContext.userEmail || "unknown"})`,
+    `- Family: ${clientContext.familyName || "Unknown"}`,
+    `- Baby: ${clientContext.babyName || babyProfile?.name || "Unknown"}${clientContext.babyDob ? ` (DOB: ${clientContext.babyDob})` : ""}`,
+    `- Timezone: ${clientContext.babyTimezone || babyProfile?.timezone || "Asia/Kolkata"}`,
+    `- Page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "/"})`,
+    `- ${pageCapabilities(clientContext.pageLabel)}`,
+    `- Mora settings: enabled=${moraSettings.enabled}, yoloMode=${moraSettings.yoloMode}, allowWrites=${moraSettings.allowWrites}`,
+    `- Recent events (24h): ${recentEvents?.length ?? 0}`,
+    `- Upcoming reminders: ${upcomingReminders?.length ?? 0}`,
   ].join("\n");
 
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
-    model: openai(process.env.MORA_MODEL || "gpt-5-mini"),
+    model: openai(process.env.MORA_MODEL || "gpt-4.1-nano"),
     system,
     messages: modelMessages,
     stopWhen: stepCountIs(6),
