@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { formatTimeSince, formatDateFull } from "@/lib/time";
+import { formatTimeSince, formatDateFull, formatBabyAge } from "@/lib/time";
 import { EVENT_TYPES } from "@/lib/constants";
 
 export default function TodayPage() {
@@ -178,13 +178,21 @@ export default function TodayPage() {
         </div>
       ) : (
         <>
-          <div className="mb-6">
-            <h1 className="text-2xl font-serif font-bold text-espresso">
-              {babyProfile.name ? `Good Morning, ${babyProfile.name}` : "Today"}
-            </h1>
-            <p className="text-muted text-sm mt-1">
-              {formatDateFull(new Date())}
-            </p>
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-serif font-bold text-espresso">
+                {babyProfile.name ? `Good Morning, ${babyProfile.name}` : "Today"}
+              </h1>
+              <p className="text-muted text-sm mt-1">
+                {formatDateFull(new Date())}
+              </p>
+            </div>
+            {babyProfile.dob && (
+              <div className="shrink-0 bg-sage/10 border border-sage/20 rounded-2xl px-4 py-2 text-center">
+                <span className="material-symbols-outlined text-sage text-[18px] leading-none">cake</span>
+                <p className="text-sm font-bold text-espresso mt-0.5">{formatBabyAge(babyProfile.dob)}</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 mb-8">
