@@ -6,6 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
 import { Switch } from "@/components/ui/switch";
 import PhotoAttacher from "@/components/PhotoAttacher";
+import FormulaPicker from "@/components/FormulaPicker";
 
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
@@ -94,35 +95,10 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
       case "feed":
         if (feedSubType === "bottle") {
           let formulaPayload: Record<string, unknown> = {};
-          const selectedFormula = formulas?.find((f: any) => f._id === selectedFormulaId);
 
-          if (bottleContentType === "formula") {
-            if (selectedFormulaId === "__new__") {
-              const composedName = buildFormulaDisplayName(formulaCompany, formulaType, formulaName);
-              if (!composedName) return;
-              const newFormulaId = await upsertFormula({
-                name: composedName,
-                notes: "",
-              });
-              formulaPayload = {
-                formulaId: newFormulaId,
-                formulaName: composedName,
-                formulaCompany: formulaCompany.trim() || null,
-                formulaType: formulaType.trim() || null,
-              };
-            } else if (selectedFormula) {
-              const parts = (selectedFormula.name || "").split(" - ");
-              formulaPayload = {
-                formulaId: selectedFormula._id,
-                formulaName: selectedFormula.name,
-                formulaCompany: parts[0] || null,
-                formulaType: parts[1] || null,
-              };
-            } else {
-              formulaPayload = {
-                formulaName: "Formula",
-              };
-            }
+          if (bottleContentType === "formula" && formulaName) {
+            await upsertFormula({ name: formulaName, notes: "" });
+            formulaPayload = { formulaName };
           }
 
           eventType = "FEED_BOTTLE";
@@ -453,49 +429,17 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 
                   {bottleContentType === "formula" && (
                     <div className="space-y-3">
-                      <label htmlFor="formulaName" className="text-xs font-bold text-muted uppercase tracking-wider">
-                        Formula Name
+                      <label className="text-xs font-bold text-muted uppercase tracking-wider">
+                        Formula
                       </label>
-                      <select
-                        id="formulaName"
-                        value={selectedFormulaId}
-                        onChange={(e) => setSelectedFormulaId(e.target.value)}
-                        className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                      >
-                        <option value="">Select formula</option>
-                        {formulas?.map((formula: any) => (
-                          <option key={formula._id} value={formula._id}>
-                            {formula.name}
-                          </option>
-                        ))}
-                        <option value="__new__">+ Add new formula</option>
-                      </select>
-
-                      {selectedFormulaId === "__new__" && (
-                        <div className="grid grid-cols-1 gap-3">
-                          <input
-                            type="text"
-                            value={formulaCompany}
-                            onChange={(e) => setFormulaCompany(e.target.value)}
-                            placeholder="Company (e.g. Similac)"
-                            className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                          />
-                          <input
-                            type="text"
-                            value={formulaType}
-                            onChange={(e) => setFormulaType(e.target.value)}
-                            placeholder="Type (e.g. Stage 1)"
-                            className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                          />
-                          <input
-                            type="text"
-                            value={formulaName}
-                            onChange={(e) => setFormulaName(e.target.value)}
-                            placeholder="Formula name (e.g. Advance)"
-                            className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                          />
-                        </div>
-                      )}
+                      <FormulaPicker
+                        value={formulaName}
+                        onChange={(name) => {
+                          setFormulaName(name);
+                          setSelectedFormulaId("");
+                        }}
+                        savedFormulas={formulas ?? []}
+                      />
                     </div>
                   )}
                 </>
