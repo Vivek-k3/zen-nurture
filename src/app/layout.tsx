@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
+import { AuthGuard } from "@/components/AuthGuard";
 import AppLayout from "./AppLayout";
 
 export const metadata: Metadata = {
@@ -23,7 +24,9 @@ export default function RootLayout({
       </head>
       <body>
         <ConvexClientProvider>
-          <AppLayout>{children}</AppLayout>
+          <AuthGuard>
+            <AppLayout>{children}</AppLayout>
+          </AuthGuard>
         </ConvexClientProvider>
       </body>
     </html>

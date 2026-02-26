@@ -2,7 +2,37 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  families: defineTable({
+    name: v.string(),
+    ownerId: v.string(),
+    createdAt: v.string(),
+  }).index("by_ownerId", ["ownerId"]),
+
+  familyMembers: defineTable({
+    familyId: v.id("families"),
+    userId: v.string(),
+    role: v.string(),
+    joinedAt: v.string(),
+  })
+    .index("by_familyId", ["familyId"])
+    .index("by_userId", ["userId"])
+    .index("by_familyId_userId", ["familyId", "userId"]),
+
+  familyInvitations: defineTable({
+    familyId: v.id("families"),
+    email: v.string(),
+    role: v.string(),
+    invitedBy: v.string(),
+    status: v.string(),
+    createdAt: v.string(),
+    expiresAt: v.string(),
+  })
+    .index("by_familyId", ["familyId"])
+    .index("by_email", ["email"])
+    .index("by_email_status", ["email", "status"]),
+
   babyProfiles: defineTable({
+    familyId: v.id("families"),
     name: v.string(),
     dob: v.string(),
     gender: v.optional(v.string()),
@@ -13,14 +43,19 @@ export default defineSchema({
       length: v.optional(v.string()),
     })),
     createdAt: v.string(),
-  }).index("by_createdAt", ["createdAt"]),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_familyId", ["familyId"]),
 
   caregivers: defineTable({
     babyId: v.id("babyProfiles"),
     displayName: v.string(),
     color: v.string(),
+    userId: v.optional(v.string()),
     createdAt: v.string(),
-  }).index("by_babyId", ["babyId"]),
+  })
+    .index("by_babyId", ["babyId"])
+    .index("by_userId", ["userId"]),
 
   events: defineTable({
     babyId: v.id("babyProfiles"),
@@ -61,7 +96,8 @@ export default defineSchema({
     quietHoursEnd: v.optional(v.number()),
     snoozeOptions: v.optional(v.any()),
     createdAt: v.string(),
-  }).index("by_babyId", ["babyId"])
+  })
+    .index("by_babyId", ["babyId"])
     .index("by_babyId_category", ["babyId", "category"]),
 
   files: defineTable({
@@ -73,7 +109,8 @@ export default defineSchema({
     capturedAt: v.string(),
     notes: v.optional(v.string()),
     createdAt: v.string(),
-  }).index("by_babyId", ["babyId"])
+  })
+    .index("by_babyId", ["babyId"])
     .index("by_tags", ["tags"]),
 
   settings: defineTable({

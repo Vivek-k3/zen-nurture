@@ -5,9 +5,16 @@ import { usePathname } from "next/navigation";
 import Sidebar from "./components/Sidebar";
 import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
+import UserMenu from "./components/UserMenu";
+
+const AUTH_PATHS = ["/sign-in", "/sign-up"];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  if (AUTH_PATHS.includes(pathname)) {
+    return <>{children}</>;
+  }
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isMoraOpen, setIsMoraOpen] = useState(false);
   const moraTriggerRef = useRef<HTMLButtonElement>(null);
@@ -65,9 +72,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold">Mora</span>
             </button>
 
-            <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center text-muted shadow-sm border border-muted/10 relative cursor-pointer hover:text-espresso transition-colors">
-              <span className="material-symbols-outlined">notifications</span>
-            </div>
+            <UserMenu />
           </div>
         </header>
 

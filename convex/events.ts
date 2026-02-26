@@ -1,26 +1,76 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { authComponent } from "./auth";
+
+async function requireAuth(ctx: any) {
+  const user = await authComponent.safeGetAuthUser(ctx);
+  if (!user) throw new Error("Unauthenticated");
+  return user;
+}
+
+async function getUserFamilyIds(ctx: any, userId: string) {
+  const memberships = await ctx.db
+    .query("familyMembers")
+    .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+    .collect();
+  return memberships.map((m: any) => m.familyId);
+}
 
 export const getBabyProfiles = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("babyProfiles").order("desc").collect();
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (familyIds.length === 0) return [];
+
+    const allProfiles = [];
+    for (const familyId of familyIds) {
+      const profiles = await ctx.db
+        .query("babyProfiles")
+        .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
+        .collect();
+      allProfiles.push(...profiles);
+    }
+    return allProfiles.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   },
 });
 
 export const getBabyProfile = query({
   args: { id: v.optional(v.id("babyProfiles")) },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+
     if (args.id) {
-      return await ctx.db.get(args.id);
+      const profile = await ctx.db.get(args.id);
+      if (!profile) return null;
+      const familyIds = await getUserFamilyIds(ctx, user._id);
+      if (!familyIds.includes(profile.familyId)) return null;
+      return profile;
     }
-    const profiles = await ctx.db.query("babyProfiles").order("desc").take(1);
-    return profiles[0] || null;
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (familyIds.length === 0) return null;
+
+    for (const familyId of familyIds) {
+      const profiles = await ctx.db
+        .query("babyProfiles")
+        .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
+        .order("desc")
+        .take(1);
+      if (profiles[0]) return profiles[0];
+    }
+    return null;
   },
 });
 
 export const createBabyProfile = mutation({
   args: {
+    familyId: v.id("families"),
     name: v.string(),
     dob: v.string(),
     gender: v.optional(v.string()),
@@ -32,6 +82,12 @@ export const createBabyProfile = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (!familyIds.includes(args.familyId)) {
+      throw new Error("Not a member of this family");
+    }
+
     const id = await ctx.db.insert("babyProfiles", {
       ...args,
       timezone: args.timezone || "Asia/Kolkata",
