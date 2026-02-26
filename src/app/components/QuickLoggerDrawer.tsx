@@ -7,6 +7,7 @@ import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from 
 import { Switch } from "@/components/ui/switch";
 import PhotoAttacher from "@/components/PhotoAttacher";
 import FormulaPicker from "@/components/FormulaPicker";
+import MedicinePicker from "@/components/MedicinePicker";
 
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
@@ -134,7 +135,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         };
         break;
       case "meds": {
-        const finalMedName = medName === "__custom__" ? medCustomName.trim() : medName;
+        const finalMedName = medName.trim();
         if (!finalMedName) return;
         eventType = "MED_DOSE";
         payload = {
@@ -700,43 +701,13 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
               <div className="space-y-3">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">Medicine</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {DEFAULT_MEDICINES.map((med) => (
-                    <button
-                      key={med}
-                      type="button"
-                      onClick={() => setMedName(med)}
-                      className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${
-                        medName === med
-                          ? "bg-alert-red/10 border-alert-red/30 border text-alert-red"
-                          : "bg-white border border-muted/10 text-espresso hover:border-alert-red/20"
-                      }`}
-                    >
-                      {med}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setMedName("__custom__")}
-                    className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${
-                      medName === "__custom__"
-                        ? "bg-alert-red/10 border-alert-red/30 border text-alert-red"
-                        : "bg-white border border-muted/10 text-muted hover:border-alert-red/20"
-                    }`}
-                  >
-                    + Other
-                  </button>
-                </div>
-                {medName === "__custom__" && (
-                  <input
-                    type="text"
-                    value={medCustomName}
-                    onChange={(e) => setMedCustomName(e.target.value)}
-                    placeholder="Medicine name"
-                    className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-alert-red/20"
-                    autoFocus
-                  />
-                )}
+                <MedicinePicker
+                  value={medName === "__custom__" ? medCustomName : medName}
+                  onChange={(name) => {
+                    setMedName(name);
+                    setMedCustomName("");
+                  }}
+                />
               </div>
 
               <div className="bg-white rounded-2xl p-5 border border-muted/10 space-y-4 shadow-sm">
