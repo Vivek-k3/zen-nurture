@@ -13,6 +13,7 @@ import NudgeBanner from "@/components/NudgeBanner";
 import { useBaby } from "@/components/BabyContext";
 import { authClient } from "@/lib/auth-client";
 import { DataState } from "@/components/DataState";
+import { useGenderTheme, useGenderGreeting, useGenderEmoji } from "@/components/GenderTheme";
 
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
@@ -24,6 +25,10 @@ export default function TodayPage() {
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
   const weekAgoISO = useMemo(() => getDateDaysAgo(6).toISOString(), []);
   const nowISO = useMemo(() => new Date().toISOString(), []);
+  
+  const genderTheme = useGenderTheme();
+  const genderGreeting = useGenderGreeting();
+  const genderEmoji = useGenderEmoji();
 
   const lastEvents = useQuery(
     api.events.getLastEventsByTypes,
@@ -119,15 +124,15 @@ export default function TodayPage() {
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-serif font-bold text-espresso">
-                {caregiverName ? `Good Morning, ${caregiverName}` : "Today"}
+                {caregiverName ? `Good Morning, ${caregiverName}` : genderGreeting}
               </h1>
               <p className="text-muted text-sm mt-1">
-                {formatDateFull(new Date())}
+                {formatDateFull(new Date())} {genderEmoji}
               </p>
             </div>
             {babyProfile.dob && (
-              <div className="shrink-0 bg-sage/10 border border-sage/20 rounded-2xl px-4 py-2 text-center">
-                <span className="material-symbols-outlined text-sage text-[18px] leading-none">cake</span>
+              <div className={`shrink-0 ${genderTheme.primaryLight} ${genderTheme.border} border rounded-2xl px-4 py-2 text-center`}>
+                <span className={`material-symbols-outlined ${genderTheme.text} text-[18px] leading-none`}>cake</span>
                 <p className="text-sm font-bold text-espresso mt-0.5">{formatBabyAge(babyProfile.dob)}</p>
               </div>
             )}
@@ -239,7 +244,7 @@ export default function TodayPage() {
             <div className={`rounded-[20px] p-5 border mb-8 ${
               nextReminder.isOverdue
                 ? "bg-alert-red/5 border-alert-red/20"
-                : "bg-sage/5 border-sage/20"
+                : `${genderTheme.bg} ${genderTheme.border}`
             }`}>
               <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Next Reminder</h3>
               <div className="flex items-center justify-between">
@@ -251,7 +256,7 @@ export default function TodayPage() {
                       : new Date(nextReminder.dueTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
                   </div>
                 </div>
-                <span className={`material-symbols-outlined ${nextReminder.isOverdue ? "text-alert-red" : "text-sage"}`}>
+                <span className={`material-symbols-outlined ${nextReminder.isOverdue ? "text-alert-red" : genderTheme.text}`}>
                   notifications
                 </span>
               </div>

@@ -456,8 +456,8 @@ export default function SettingsPage() {
                     className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
                   >
                     <option value="">Not specified</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
+                    <option value="baby-boy">Baby Boy</option>
+                    <option value="baby-girl">Baby Girl</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -807,9 +807,9 @@ export default function SettingsPage() {
                 </span>
               ))}
             </div>
-            <p className="text-[11px] text-muted">
+            {/* <p className="text-[11px] text-muted">
               PIN / caregiver role controls are planned for a later version.
-            </p>
+            </p> */}
           </div>
         </section>
 

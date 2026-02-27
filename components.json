@@ -18,6 +18,7 @@
   },
   "registries": {
     "@assistant-ui": "https://r.assistant-ui.com/{name}.json",
+    "@lucide-animated": "https://lucide-animated.com/r/{name}.json",
     "@ncdai": "https://chanhdai.com/r/{name}.json"
   }
 }

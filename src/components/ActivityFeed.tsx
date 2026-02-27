@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { useLiveTimer, formatElapsed } from "@/hooks/useLiveTimer";
+import { useGenderTheme } from "@/components/GenderTheme";
 
 interface ActivityFeedProps {
   babyId: any;
@@ -18,16 +19,17 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
   );
   const { data: session } = authClient.useSession();
   const now = useLiveTimer(60_000);
+  const genderTheme = useGenderTheme();
 
   if (events === undefined) {
     if (compact) return null;
     return (
       <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
         <div className="flex items-center gap-2 mb-4">
-          <span className="material-symbols-outlined text-sage text-lg">groups</span>
+          <span className={`material-symbols-outlined ${genderTheme.text} text-lg`}>groups</span>
           <h3 className="text-sm font-bold text-muted uppercase tracking-wider">Activity</h3>
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-sage font-bold">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
+          <span className={`ml-auto flex items-center gap-1 text-[10px] ${genderTheme.text} font-bold`}>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${genderTheme.primary} animate-pulse`} />
             Live
           </span>
         </div>
@@ -62,10 +64,10 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
     <div className={compact ? "space-y-1" : "bg-white rounded-[20px] p-5 shadow-sm border border-muted/10"}>
       {!compact && (
         <div className="flex items-center gap-2 mb-4">
-          <span className="material-symbols-outlined text-sage text-lg">groups</span>
+          <span className={`material-symbols-outlined ${genderTheme.text} text-lg`}>groups</span>
           <h3 className="text-sm font-bold text-muted uppercase tracking-wider">Activity</h3>
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-sage font-bold">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
+          <span className={`ml-auto flex items-center gap-1 text-[10px] ${genderTheme.text} font-bold`}>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${genderTheme.primary} animate-pulse`} />
             Live
           </span>
         </div>
@@ -87,7 +89,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
             <div key={event._id} className="flex items-center gap-2 py-1.5 px-1">
               <span className={`material-symbols-outlined text-[14px] text-${color}`}>{icon}</span>
               <p className="text-[11px] text-muted flex-1 truncate">
-                <span className={`font-semibold ${isMe ? "text-espresso" : "text-sage"}`}>{who}</span>
+                <span className={`font-semibold ${isMe ? "text-espresso" : genderTheme.text}`}>{who}</span>
                 {" "}logged {typeLabel}{detail ? ` · ${detail}` : ""}
               </p>
               <span className="text-[10px] text-muted/60 shrink-0">{ago}</span>
@@ -102,7 +104,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] text-espresso">
-                <span className={`font-semibold ${isMe ? "" : "text-sage"}`}>{who}</span>
+                <span className={`font-semibold ${isMe ? "" : genderTheme.text}`}>{who}</span>
                 {" "}logged a <span className="font-medium">{typeLabel}</span>
                 {detail ? <span className="text-muted"> · {detail}</span> : ""}
               </p>

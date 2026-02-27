@@ -1,7 +1,7 @@
 "use client"
 
 import type { Content } from "@radix-ui/react-popover"
-import { XIcon } from "lucide-react"
+import { XIcon } from "@/components/ui/x"
 import Link from "next/link"
 import * as React from "react"
 import { createPortal } from "react-dom"

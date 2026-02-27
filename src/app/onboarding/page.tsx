@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
+import { useGenderThemeType } from "@/components/GenderTheme";
 
 type Step = "family" | "baby";
 
@@ -22,6 +23,8 @@ export default function OnboardingPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const genderTheme = useGenderThemeType();
 
   const createFamily = useMutation(api.families.createFamily);
   const createBabyProfile = useMutation(api.events.createBabyProfile);
@@ -76,13 +79,27 @@ export default function OnboardingPage() {
     }
   };
 
+  const getThemeTextClass = () => {
+    if (genderTheme === "baby-boy") return "text-baby-blue";
+    if (genderTheme === "baby-girl") return "text-baby-pink";
+    return "text-sage";
+  };
+  const themeTextClass = getThemeTextClass();
+
+  const getThemeBgClass = () => {
+    if (genderTheme === "baby-boy") return "bg-baby-blue";
+    if (genderTheme === "baby-girl") return "bg-baby-pink";
+    return "bg-sage";
+  };
+  const themeBgClass = getThemeBgClass();
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-oat px-4">
       <div className="w-full max-w-lg">
         {/* Progress dots */}
         <div className="flex justify-center gap-2 mb-8">
-          <div className={`h-2 rounded-full transition-all duration-300 ${step === "family" ? "w-8 bg-sage" : "w-2 bg-sage"}`} />
-          <div className={`h-2 rounded-full transition-all duration-300 ${step === "baby" ? "w-8 bg-sage" : "w-2 bg-muted/30"}`} />
+          <div className={`h-2 rounded-full transition-all duration-300 ${step === "family" ? getThemeBgClass() : getThemeBgClass() + "/50"}`} style={{ width: step === "family" ? "2rem" : "0.5rem" }} />
+          <div className={`h-2 rounded-full transition-all duration-300 ${step === "baby" ? getThemeBgClass() : "bg-muted/30"}`} style={{ width: step === "baby" ? "2rem" : "0.5rem" }} />
         </div>
 
         <div className="text-center mb-6">
@@ -96,7 +113,7 @@ export default function OnboardingPage() {
         {step === "family" && (
           <div className="bg-white rounded-[20px] p-8 shadow-sm border border-muted/10">
             <div className="text-center mb-6">
-              <span className="material-symbols-outlined text-5xl text-sage">family_restroom</span>
+              <span className={`material-symbols-outlined text-5xl ${themeTextClass}`}>family_restroom</span>
               <h2 className="text-xl font-bold text-espresso mt-3">Name Your Family</h2>
               <p className="text-muted text-sm mt-1">
                 This is your shared space — caregivers you invite will join here.
@@ -147,7 +164,7 @@ export default function OnboardingPage() {
         {step === "baby" && (
           <div className="bg-white rounded-[20px] p-8 shadow-sm border border-muted/10">
             <div className="text-center mb-6">
-              <span className="material-symbols-outlined text-5xl text-sage">child_friendly</span>
+              <span className={`material-symbols-outlined text-5xl ${themeTextClass}`}>child_friendly</span>
               <h2 className="text-xl font-bold text-espresso mt-3">Add Your Baby</h2>
               <p className="text-muted text-sm mt-1">You can add more babies later in Settings.</p>
             </div>
@@ -192,8 +209,8 @@ export default function OnboardingPage() {
                     className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium focus:outline-none focus:border-sage/50"
                   >
                     <option value="">Not specified</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
+                    <option value="baby-boy">Baby Boy</option>
+                    <option value="baby-girl">Baby Girl</option>
                   </select>
                 </div>
               </div>

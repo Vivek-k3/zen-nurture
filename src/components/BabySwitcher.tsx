@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useBaby } from "./BabyContext";
 import { formatBabyAge } from "@/lib/time";
 import Link from "next/link";
+import { useGenderTheme, useGenderEmoji } from "./GenderTheme";
 
 interface BabySwitcherProps {
   compact?: boolean;
@@ -13,6 +14,8 @@ export default function BabySwitcher({ compact = false }: BabySwitcherProps) {
   const { babies, activeBaby, switchBaby } = useBaby();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const genderTheme = useGenderTheme();
+  const genderEmoji = useGenderEmoji();
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -36,7 +39,7 @@ export default function BabySwitcher({ compact = false }: BabySwitcherProps) {
           onClick={() => setOpen(!open)}
           className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/50 transition-colors"
         >
-          <div className="h-7 w-7 rounded-full bg-sage/15 text-sage flex items-center justify-center text-xs font-bold">
+          <div className={`h-7 w-7 rounded-full ${genderTheme.primaryLight} ${genderTheme.text} flex items-center justify-center text-xs font-bold`}>
             {initial}
           </div>
           <span className="text-xs font-semibold text-espresso truncate max-w-[80px]">{activeBaby.name}</span>
@@ -46,7 +49,7 @@ export default function BabySwitcher({ compact = false }: BabySwitcherProps) {
         </button>
 
         {open && babies.length > 1 && (
-          <Dropdown babies={babies} activeBaby={activeBaby} switchBaby={switchBaby} onClose={() => setOpen(false)} />
+          <Dropdown babies={babies} activeBaby={activeBaby} switchBaby={switchBaby} onClose={() => setOpen(false)} genderTheme={genderTheme} genderEmoji={genderEmoji} />
         )}
       </div>
     );
@@ -57,9 +60,9 @@ export default function BabySwitcher({ compact = false }: BabySwitcherProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-white/60 border border-muted/10 hover:border-sage/20 transition-all w-full"
+        className={`flex items-center gap-3 px-3 py-2 rounded-2xl bg-white/60 border ${genderTheme.border} hover:border-sage/30 transition-all w-full`}
       >
-        <div className="h-9 w-9 rounded-full bg-sage/15 text-sage flex items-center justify-center font-bold text-sm shrink-0">
+        <div className={`h-9 w-9 rounded-full ${genderTheme.primaryLight} ${genderTheme.text} flex items-center justify-center font-bold text-sm shrink-0`}>
           {initial}
         </div>
         <div className="flex-1 min-w-0 text-left">
@@ -72,7 +75,7 @@ export default function BabySwitcher({ compact = false }: BabySwitcherProps) {
       </button>
 
       {open && (
-        <Dropdown babies={babies} activeBaby={activeBaby} switchBaby={switchBaby} onClose={() => setOpen(false)} />
+        <Dropdown babies={babies} activeBaby={activeBaby} switchBaby={switchBaby} onClose={() => setOpen(false)} genderTheme={genderTheme} genderEmoji={genderEmoji} />
       )}
     </div>
   );
@@ -83,17 +86,28 @@ function Dropdown({
   activeBaby,
   switchBaby,
   onClose,
+  genderTheme,
+  genderEmoji,
 }: {
   babies: any[];
   activeBaby: any;
   switchBaby: (id: any) => void;
   onClose: () => void;
+  genderTheme: ReturnType<typeof useGenderTheme>;
+  genderEmoji: string;
 }) {
+  const getBabyTheme = (babyGender?: string) => {
+    if (babyGender === "baby-boy") return { primary: "bg-baby-blue", text: "text-baby-blue", light: "bg-baby-blue/10" };
+    if (babyGender === "baby-girl") return { primary: "bg-baby-pink", text: "text-baby-pink", light: "bg-baby-pink/10" };
+    return { primary: "bg-sage", text: "text-sage", light: "bg-sage/10" };
+  };
+
   return (
     <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-2xl shadow-lg border border-muted/10 py-1.5 z-50">
       {babies.map((baby: any) => {
         const isActive = String(baby._id) === String(activeBaby._id);
         const age = baby.dob ? formatBabyAge(baby.dob) : "";
+        const babyTheme = getBabyTheme(baby.gender);
         return (
           <button
             key={baby._id}
@@ -103,11 +117,11 @@ function Dropdown({
               onClose();
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-oat/50 transition-colors ${
-              isActive ? "bg-sage/5" : ""
+              isActive ? genderTheme.bg : ""
             }`}
           >
             <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              isActive ? "bg-sage text-white" : "bg-oat text-muted"
+              isActive ? `${babyTheme.primary} text-white` : `${babyTheme.light} ${babyTheme.text}`
             }`}>
               {baby.name?.[0]?.toUpperCase() ?? "?"}
             </div>
@@ -116,7 +130,7 @@ function Dropdown({
               {age && <p className="text-[10px] text-muted">{age}</p>}
             </div>
             {isActive && (
-              <span className="material-symbols-outlined text-sage text-[16px]">check</span>
+              <span className={`material-symbols-outlined ${babyTheme.text} text-[16px]`}>check</span>
             )}
           </button>
         );
