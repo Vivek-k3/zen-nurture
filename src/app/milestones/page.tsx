@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import {
@@ -9,16 +9,88 @@ import {
   type MilestoneCategory,
   type MilestoneDef,
 } from "@/lib/milestone-defs";
-import { formatBabyAge } from "@/lib/time";
+import { Confetti, type ConfettiRef } from "@/components/ui/confetti";
 
 type Filter = "all" | MilestoneCategory;
 
+const CELEBRATION_DURATION_MS = 2200;
+const SIDE_CANNON_COLORS = ["#7C9A82", "#A8C4AD", "#C4A484", "#6B8CAE"];
+
+/**
+ * Render the Milestones page UI that lists and filters baby milestones, shows progress, and lets the user mark milestones as achieved or unachieved.
+ *
+ * Fetches the current baby profile and saved milestones, computes progress and filtered lists, and provides actions to achieve/unachieve milestones. When a milestone is achieved it triggers a short confetti celebration and clears animation timers on unmount or when the celebration ends.
+ *
+ * @returns The rendered Milestones page as a JSX element
+ */
 export default function MilestonesPage() {
   const [mounted, setMounted] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [celebrating, setCelebrating] = useState<string | null>(null);
+  const confettiRef = useRef<ConfettiRef>(null);
+  const celebrationTimeoutRef = useRef<number | null>(null);
+  const confettiFrameRef = useRef<number | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  const stopCelebration = () => {
+    if (celebrationTimeoutRef.current !== null) {
+      window.clearTimeout(celebrationTimeoutRef.current);
+      celebrationTimeoutRef.current = null;
+    }
+
+    if (confettiFrameRef.current !== null) {
+      window.cancelAnimationFrame(confettiFrameRef.current);
+      confettiFrameRef.current = null;
+    }
+  };
+
+  const fireSideCannons = () => {
+    stopCelebration();
+
+    const end = Date.now() + CELEBRATION_DURATION_MS;
+
+    const frame = () => {
+      if (Date.now() > end) {
+        confettiFrameRef.current = null;
+        return;
+      }
+
+      void confettiRef.current?.fire({
+        particleCount: 3,
+        angle: 58,
+        spread: 52,
+        startVelocity: 58,
+        gravity: 1,
+        scalar: 0.95,
+        ticks: 220,
+        origin: { x: 0.02, y: 0.98 },
+        colors: SIDE_CANNON_COLORS,
+      });
+
+      void confettiRef.current?.fire({
+        particleCount: 3,
+        angle: 122,
+        spread: 52,
+        startVelocity: 58,
+        gravity: 1,
+        scalar: 0.95,
+        ticks: 220,
+        origin: { x: 0.98, y: 0.98 },
+        colors: SIDE_CANNON_COLORS,
+      });
+
+      confettiFrameRef.current = window.requestAnimationFrame(frame);
+    };
+
+    frame();
+  };
+
+  useEffect(() => {
+    setMounted(true);
+
+    return () => {
+      stopCelebration();
+    };
+  }, []);
 
   const babyProfile = useQuery(api.events.getBabyProfile, {});
   const babyId = babyProfile?._id;
@@ -43,14 +115,25 @@ export default function MilestonesPage() {
 
   const handleAchieve = async (def: MilestoneDef) => {
     if (!babyId) return;
-    setCelebrating(def.key);
-    await achieveMilestone({
-      babyId,
-      key: def.key,
-      title: def.title,
-      category: def.category,
-    });
-    setTimeout(() => setCelebrating(null), 1500);
+
+    try {
+      await achieveMilestone({
+        babyId,
+        key: def.key,
+        title: def.title,
+        category: def.category,
+      });
+
+      setCelebrating(def.key);
+      fireSideCannons();
+
+      celebrationTimeoutRef.current = window.setTimeout(() => {
+        setCelebrating(null);
+        celebrationTimeoutRef.current = null;
+      }, CELEBRATION_DURATION_MS);
+    } catch (error) {
+      console.error("Failed to save milestone", error);
+    }
   };
 
   const handleUnachieve = async (milestoneId: any) => {
@@ -59,6 +142,13 @@ export default function MilestonesPage() {
 
   return (
     <div className="p-4 lg:p-8 max-w-4xl mx-auto">
+      <Confetti
+        ref={confettiRef}
+        manualstart
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-50 h-full w-full"
+      />
+
       <div className="mb-6">
         <h1 className="text-2xl font-serif font-bold text-espresso">Milestones</h1>
         <p className="text-muted text-sm mt-1">

@@ -1,42 +1,60 @@
 "use client";
 
-import { useState, ReactNode, useEffect, useRef } from "react";
+import { useState, ReactNode, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
-import Sidebar from "./components/Sidebar";
-import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
-import MoraSidebar from "./components/MoraSidebar";
-import UserMenu from "./components/UserMenu";
-import NotificationBell from "./components/NotificationBell";
-import ThemeToggle from "./components/ThemeToggle";
+import Sidebar from "@/components/Sidebar";
+import QuickLoggerDrawer, { type QuickLogPrefill } from "@/components/QuickLoggerDrawer";
+import MoraSidebar from "@/components/MoraSidebar";
+import UserMenu from "@/components/UserMenu";
+import NotificationBell from "@/components/NotificationBell";
+import ThemeToggle from "@/components/ThemeToggle";
 import MoraOrb from "@/components/MoraOrb";
 
 const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
+/**
+ * Renders the authenticated application chrome around page content, including sidebars, desktop and mobile headers, a floating quick-log action, and the QuickLogger and Mora drawers while managing their open/close state and focus restoration.
+ *
+ * The component listens for a global "openQuickLogger" event to prefill and open the QuickLogger drawer, provides controls to toggle the Mora sidebar and QuickLogger drawer (ensuring only one is open at a time), and returns focus to the Mora trigger when the Mora sidebar is closed.
+ *
+ * @returns The React element that composes the authenticated layout and renders the provided children within it
+ */
 function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const [quickLogPrefill, setQuickLogPrefill] = useState<QuickLogPrefill | null>(null);
   const [isMoraOpen, setIsMoraOpen] = useState(false);
   const moraTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const handleOpenQuickLogger = () => setIsQuickLogOpen(true);
-    window.addEventListener('openQuickLogger', handleOpenQuickLogger);
-    return () => window.removeEventListener('openQuickLogger', handleOpenQuickLogger);
+    const handleOpenQuickLogger = (e: Event) => {
+      const detail = (e as CustomEvent<{ prefill?: QuickLogPrefill }>).detail;
+      setQuickLogPrefill(detail?.prefill ?? null);
+      setIsQuickLogOpen(true);
+    };
+    window.addEventListener("openQuickLogger", handleOpenQuickLogger);
+    return () => window.removeEventListener("openQuickLogger", handleOpenQuickLogger);
   }, []);
 
-  const openQuickLog = () => {
+  const openQuickLog = useCallback(() => {
     setIsMoraOpen(false);
+    setQuickLogPrefill(null);
     setIsQuickLogOpen(true);
-  };
+  }, []);
 
-  const openMora = () => {
+  const openMora = useCallback(() => {
     setIsQuickLogOpen(false);
     setIsMoraOpen(true);
-  };
+  }, []);
 
-  const closeMora = () => {
+  const closeMora = useCallback(() => {
     setIsMoraOpen(false);
     requestAnimationFrame(() => moraTriggerRef.current?.focus());
-  };
+  }, []);
+
+  const closeQuickLog = useCallback(() => {
+    setIsQuickLogOpen(false);
+    setQuickLogPrefill(null);
+  }, []);
 
   return (
     <div className="relative flex min-h-screen w-full bg-oat">
@@ -64,6 +82,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
+              data-tour-step-id="mora-trigger"
               className="flex items-center gap-2 bg-white/90 text-espresso pl-3 pr-4 py-2 rounded-full shadow-sm border border-black/5 hover:border-sage/30 hover:bg-white transition-all"
             >
               <MoraOrb size="xs" />
@@ -93,6 +112,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
+              data-tour-step-id="mora-trigger"
               className="h-10 w-10 rounded-full flex items-center justify-center bg-white/80 border border-black/5"
               aria-label="Open Mora"
             >
@@ -117,7 +137,11 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
         </button>
       </div>
 
-      <QuickLoggerDrawer isOpen={isQuickLogOpen} onClose={() => setIsQuickLogOpen(false)} />
+      <QuickLoggerDrawer
+        isOpen={isQuickLogOpen}
+        onClose={closeQuickLog}
+        initialPrefill={quickLogPrefill}
+      />
       <MoraSidebar isOpen={isMoraOpen} onClose={closeMora} />
     </div>
   );

@@ -4,6 +4,7 @@ import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { AuthGuard } from "@/components/AuthGuard";
 import { BabyProvider } from "@/components/BabyContext";
 import { ThemeProvider } from "@/components/ThemeContext";
+import { TourProvider, type Tour } from "@/components/ui/tour";
 import AppLayout from "./AppLayout";
 
 export const metadata: Metadata = {
@@ -11,6 +12,46 @@ export const metadata: Metadata = {
   description: "Track your baby's feeding, sleep, diapers, and more",
 };
 
+const MORA_TOUR: Tour = {
+  id: "mora",
+  steps: [
+    {
+      id: "mora-trigger",
+      title: "Meet Mora",
+      content:
+        "Mora is your AI copilot for baby care. Click the Mora button anytime to open the assistant.",
+    },
+    {
+      id: "mora-intro",
+      title: "Mora sidebar",
+      content:
+        "Ask about feeds, sleep, diapers, reminders, or trends. Mora will ask for approval before making changes. Tap Tour to replay this guide.",
+    },
+    {
+      id: "mora-prompts",
+      title: "Quick prompts",
+      content:
+        "Tap one of these to get started instantly. Prompts change based on the page you're on.",
+    },
+    {
+      id: "mora-composer",
+      title: "Start chatting",
+      content:
+        "Type your question or tap the mic to speak. Mora reads live data and can propose changes—you'll approve or reject each action.",
+    },
+  ],
+};
+
+const TOURS: Tour[] = [MORA_TOUR];
+
+/**
+ * Application root layout that wraps page content with global HTML, providers, and the app shell.
+ *
+ * Renders an HTML document with a Google font link and nests global context providers (ConvexClientProvider, ThemeProvider, TourProvider with configured tours, AuthGuard, BabyProvider) around the AppLayout that displays `children`.
+ *
+ * @param children - The page content to render inside the application's AppLayout
+ * @returns The root HTML element containing providers and the rendered page content
+ */
 export default function RootLayout({
   children,
 }: {
@@ -27,11 +68,13 @@ export default function RootLayout({
       <body>
         <ConvexClientProvider>
           <ThemeProvider>
-            <AuthGuard>
-              <BabyProvider>
-                <AppLayout>{children}</AppLayout>
-              </BabyProvider>
-            </AuthGuard>
+            <TourProvider tours={TOURS}>
+              <AuthGuard>
+                <BabyProvider>
+                  <AppLayout>{children}</AppLayout>
+                </BabyProvider>
+              </AuthGuard>
+            </TourProvider>
           </ThemeProvider>
         </ConvexClientProvider>
       </body>

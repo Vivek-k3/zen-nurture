@@ -9,6 +9,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { api } from "../../../../convex/_generated/api";
+import { getToken } from "@/lib/auth";
 
 type MoraClientContext = {
   pathname?: string;
@@ -22,14 +23,29 @@ type MoraClientContext = {
   familyName?: string;
 };
 
-function getConvex() {
+/**
+ * Create and configure a Convex HTTP client for the application.
+ *
+ * @param token - Optional authentication token to attach to the client
+ * @returns The configured Convex HTTP client
+ * @throws Error if `NEXT_PUBLIC_CONVEX_URL` is not configured
+ */
+function getConvex(token?: string) {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!url) {
     throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured");
   }
-  return new ConvexHttpClient(url);
+  const client = new ConvexHttpClient(url);
+  if (token) client.setAuth(token);
+  return client;
 }
 
+/**
+ * Extracts the most recent message sent by a user and returns its text parts concatenated and lowercased.
+ *
+ * @param messages - Array of UI messages to search, in chronological order.
+ * @returns The concatenated text content of the latest message with role `"user"`, converted to lowercase; an empty string if no user message is found.
+ */
 function getLatestUserText(messages: UIMessage[]) {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUser) return "";
@@ -128,11 +144,27 @@ async function queueOrExecuteWrite({
   };
 }
 
+/**
+ * Handle an incoming Mora AI chat request and return a UI-facing streaming response.
+ *
+ * Processes the JSON body (messages, optional threadId, optional clientContext), validates configuration and authentication,
+ * constructs Mora's system context and tools, executes the model stream, and returns the model's output as a UI message stream response.
+ *
+ * @param req - The incoming HTTP Request whose JSON body should include `messages: UIMessage[]`, optional `threadId?: string`, and optional `clientContext?: MoraClientContext`.
+ * @returns An HTTP Response containing the UI-facing streaming message stream on success; returns a 500 Response if the OpenAI API key is not configured or a 401 Response if the request is unauthenticated.
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return new Response(
       JSON.stringify({ error: "OPENAI_API_KEY is not configured. Add it to use Mora AI chat." }),
       { status: 500, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  const token = await getToken();
+  if (!token) {
+    return new Response(
+      JSON.stringify({ error: "Unauthenticated" }),
+      { status: 401, headers: { "content-type": "application/json" } }
     );
   }
 
@@ -145,7 +177,7 @@ export async function POST(req: Request) {
   const messages = body.messages ?? [];
   const threadId = body.threadId;
   const clientContext = body.clientContext ?? {};
-  const convex = getConvex();
+  const convex = getConvex(token);
   const latestUserText = getLatestUserText(messages);
 
   const babyProfile = await convex.query(api.events.getBabyProfile, {});
@@ -584,7 +616,10 @@ export async function POST(req: Request) {
         execute: async () => {
           const profile = await convex.query(api.events.getBabyProfile, {});
           if (!profile?._id) return { nudges: [] };
-          return await convex.query(api.nudges.getActiveNudges, { babyId: profile._id });
+          return await convex.query(api.nudges.getActiveNudges, {
+            babyId: profile._id,
+            now: new Date().toISOString(),
+          });
         },
       }),
       generate_weekly_digest: tool({
