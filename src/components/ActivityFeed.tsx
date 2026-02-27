@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { useLiveTimer, formatElapsed } from "@/hooks/useLiveTimer";
@@ -17,7 +17,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
     babyId ? { babyId, limit: compact ? 5 : 15 } : "skip"
   );
   const { data: session } = authClient.useSession();
-  const now = useLiveTimer(10_000);
+  const now = useLiveTimer(60_000);
 
   if (!events || events.length === 0) {
     if (compact) return null;

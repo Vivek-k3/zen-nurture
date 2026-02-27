@@ -32,7 +32,7 @@ export default defineSchema({
     .index("by_email_status", ["email", "status"]),
 
   babyProfiles: defineTable({
-    familyId: v.id("families"),
+    familyId: v.optional(v.id("families")),
     name: v.string(),
     dob: v.string(),
     gender: v.optional(v.string()),

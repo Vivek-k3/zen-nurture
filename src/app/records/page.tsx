@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
 import { formatTime, formatDate, isToday, isYesterday } from "@/lib/time";
-import EventPhotos from "../components/EventPhotos";
+import EventPhotos from "@/components/EventPhotos";
 
 type TypeFilter = "all" | string;
 

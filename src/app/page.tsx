@@ -7,9 +7,9 @@ import { api } from "../../convex/_generated/api";
 import { formatDateFull, formatBabyAge } from "@/lib/time";
 import { EVENT_TYPES } from "@/lib/constants";
 import { useLiveTimer, formatElapsed, formatElapsedCompact } from "@/hooks/useLiveTimer";
-import ActivityFeed from "./components/ActivityFeed";
-import WeeklyDigestCard from "./components/WeeklyDigestCard";
-import NudgeBanner from "./components/NudgeBanner";
+import ActivityFeed from "@/components/ActivityFeed";
+import WeeklyDigestCard from "@/components/WeeklyDigestCard";
+import NudgeBanner from "@/components/NudgeBanner";
 import { useBaby } from "@/components/BabyContext";
 
 export default function TodayPage() {
@@ -190,14 +190,14 @@ export default function TodayPage() {
           <div className="mb-8">
             <WeeklyDigestCard babyId={babyId} />
           </div>
+          {/* Quick Actions */}
+          <div className="mb-6">
 
           {/* Activity Feed */}
           <div className="mb-8">
             <ActivityFeed babyId={babyId} />
           </div>
 
-          {/* Quick Actions */}
-          <div className="mb-6">
             <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-3 px-1">Quick Actions</h3>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {[

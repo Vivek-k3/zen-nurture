@@ -2,6 +2,17 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
 
+const DEFAULT_CAREGIVER_COLORS = [
+  "#7C9A82",
+  "#C4A484",
+  "#6B8CAE",
+  "#E57373",
+  "#9C7CF4",
+  "#F4B942",
+  "#4DB6AC",
+  "#7986CB",
+];
+
 async function requireAuth(ctx: any) {
   const user = await authComponent.safeGetAuthUser(ctx);
   if (!user) throw new Error("Unauthenticated");
@@ -14,6 +25,75 @@ async function getUserFamilyIds(ctx: any, userId: string) {
     .withIndex("by_userId", (q: any) => q.eq("userId", userId))
     .collect();
   return memberships.map((m: any) => m.familyId);
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function getUtcDayRange(date: string) {
+  if (!ISO_DATE_RE.test(date)) {
+    throw new Error(`Invalid date format: ${date}`);
+  }
+
+  return {
+    startOfDay: `${date}T00:00:00.000Z`,
+    endOfDay: `${date}T23:59:59.999Z`,
+  };
+}
+
+function pickNextCaregiverColor(caregivers: Array<{ color?: string | null }>) {
+  const usedColors = new Set(
+    caregivers.map((caregiver) => caregiver.color).filter((color): color is string => Boolean(color))
+  );
+
+  return (
+    DEFAULT_CAREGIVER_COLORS.find((color) => !usedColors.has(color)) ??
+    DEFAULT_CAREGIVER_COLORS[caregivers.length % DEFAULT_CAREGIVER_COLORS.length]
+  );
+}
+
+async function ensureOwnerCaregiverRecord(ctx: any, babyId: any) {
+  const babyProfile = await ctx.db.get(babyId);
+  if (!babyProfile?.familyId) return null;
+
+  const family = await ctx.db.get(babyProfile.familyId);
+  if (!family?.ownerId) return null;
+
+  const caregivers = await ctx.db
+    .query("caregivers")
+    .withIndex("by_babyId", (q: any) => q.eq("babyId", babyId))
+    .collect();
+
+  const existingOwnerCaregiver = caregivers.find(
+    (caregiver: any) => caregiver.userId === family.ownerId
+  );
+  if (existingOwnerCaregiver) return existingOwnerCaregiver;
+
+  const ownerUser = await authComponent.getAnyUserById(ctx, family.ownerId);
+  const displayName =
+    ownerUser?.name?.trim() ||
+    ownerUser?.email?.split("@")[0] ||
+    "Owner";
+
+  const caregiverId = await ctx.db.insert("caregivers", {
+    babyId,
+    displayName,
+    color: pickNextCaregiverColor(caregivers),
+    userId: family.ownerId,
+    createdAt: new Date().toISOString(),
+  });
+
+  return await ctx.db.get(caregiverId);
+}
+
+async function getLatestEventForType(ctx: any, babyId: any, eventType: string) {
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_babyId_timestamp", (q: any) => q.eq("babyId", babyId))
+    .filter((q: any) => q.eq(q.field("type"), eventType))
+    .order("desc")
+    .take(1);
+
+  return events[0] || null;
 }
 
 export const getBabyProfiles = query({
@@ -93,6 +173,7 @@ export const createBabyProfile = mutation({
       timezone: args.timezone || "Asia/Kolkata",
       createdAt: new Date().toISOString(),
     });
+    await ensureOwnerCaregiverRecord(ctx, id);
     return id;
   },
 });
@@ -142,9 +223,46 @@ export const createCaregiver = mutation({
   },
 });
 
+export const ensureOwnerCaregiver = mutation({
+  args: { babyId: v.id("babyProfiles") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const babyProfile = await ctx.db.get(args.babyId);
+    if (!babyProfile) throw new Error("Baby profile not found");
+    if (!babyProfile.familyId) return null;
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (!familyIds.includes(babyProfile.familyId)) {
+      throw new Error("Not a member of this family");
+    }
+
+    return await ensureOwnerCaregiverRecord(ctx, args.babyId);
+  },
+});
+
 export const deleteCaregiver = mutation({
   args: { id: v.id("caregivers") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const caregiver = await ctx.db.get(args.id);
+    if (!caregiver) return;
+
+    const babyProfile = await ctx.db.get(caregiver.babyId);
+    if (!babyProfile?.familyId) {
+      await ctx.db.delete(args.id);
+      return;
+    }
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (!familyIds.includes(babyProfile.familyId)) {
+      throw new Error("Not a member of this family");
+    }
+
+    const family = await ctx.db.get(babyProfile.familyId);
+    if (family?.ownerId && caregiver.userId === family.ownerId) {
+      throw new Error("Cannot remove the owner caregiver");
+    }
+
     await ctx.db.delete(args.id);
   },
 });
@@ -163,13 +281,13 @@ export const listEvents = query({
       .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId));
 
     if (args.from) {
-      q = q.filter((q) => q.gte("timestamp", args.from!));
+      q = q.filter((q) => q.gte(q.field("timestamp"), args.from!));
     }
     if (args.to) {
-      q = q.filter((q) => q.lte("timestamp", args.to!));
+      q = q.filter((q) => q.lte(q.field("timestamp"), args.to!));
     }
     if (args.type) {
-      q = q.filter((q) => q.eq("type", args.type!));
+      q = q.filter((q) => q.eq(q.field("type"), args.type!));
     }
 
     const results = await q.order("desc").take(args.limit || 100);
@@ -183,21 +301,12 @@ export const getEventsByDate = query({
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    const startOfDay = new Date(args.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(args.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { startOfDay, endOfDay } = getUtcDayRange(args.date);
 
     return await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", startOfDay.toISOString()),
-          q.lte("timestamp", endOfDay.toISOString())
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId as any).gte("timestamp", startOfDay).lte("timestamp", endOfDay)
       )
       .order("desc")
       .collect();
@@ -210,17 +319,7 @@ export const getLastEventByType = query({
     eventType: v.string(),
   },
   handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_babyId_type", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.eq("type", args.eventType)
-      )
-      .order("desc")
-      .take(1);
-    return events[0] || null;
+    return await getLatestEventForType(ctx, args.babyId, args.eventType);
   },
 });
 
@@ -230,21 +329,14 @@ export const getLastEventsByTypes = query({
     eventTypes: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const results: Record<string, any | null> = {};
-    
-    for (const eventType of args.eventTypes) {
-      const events = await ctx.db
-        .query("events")
-        .withIndex("by_babyId_type", (q) => 
-          q.eq("babyId", args.babyId as any)
-        )
-        .filter((q) => q.eq("type", eventType))
-        .order("desc")
-        .take(1);
-      results[eventType] = events[0] || null;
-    }
-    
-    return results;
+    const entries = await Promise.all(
+      args.eventTypes.map(async (eventType) => [
+        eventType,
+        await getLatestEventForType(ctx, args.babyId, eventType),
+      ] as const)
+    );
+
+    return Object.fromEntries(entries);
   },
 });
 
@@ -254,21 +346,12 @@ export const getDailyAggregates = query({
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    const startOfDay = new Date(args.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(args.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { startOfDay, endOfDay } = getUtcDayRange(args.date);
 
     const events = await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", startOfDay.toISOString()),
-          q.lte("timestamp", endOfDay.toISOString())
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId as any).gte("timestamp", startOfDay).lte("timestamp", endOfDay)
       )
       .collect();
 
@@ -379,14 +462,8 @@ export const getRangeAggregates = query({
   handler: async (ctx, args) => {
     const events = await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", args.from),
-          q.lte("timestamp", args.to)
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId as any).gte("timestamp", args.from).lte("timestamp", args.to)
       )
       .collect();
 
@@ -513,7 +590,7 @@ export const upsertFormula = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("formulas")
-      .filter((q) => q.eq("name", args.name))
+      .filter((q) => q.eq(q.field("name"), args.name))
       .take(1);
 
     if (existing.length > 0) {
@@ -545,7 +622,7 @@ export const upsertMedicine = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("medicines")
-      .filter((q) => q.eq("name", args.name))
+      .filter((q) => q.eq(q.field("name"), args.name))
       .take(1);
 
     if (existing.length > 0) {
@@ -566,7 +643,7 @@ export const listReminderRules = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .order("desc")
       .collect();
   },
@@ -635,7 +712,7 @@ export const computeUpcomingReminders = query({
     const currentTime = args.now ? new Date(args.now) : new Date();
     const rules = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .collect();
 
     const enabledRules = rules.filter((r) => r.enabled);
@@ -643,17 +720,14 @@ export const computeUpcomingReminders = query({
 
     for (const rule of enabledRules) {
       if (rule.category !== "custom" && rule.triggerType === "afterLastEventType") {
-        const events = await ctx.db
-          .query("events")
-          .withIndex("by_babyId_type", (q) => 
-            q.eq("babyId", args.babyId as any)
-          )
-          .filter((q) => q.eq("type", rule.triggerConfig?.lastEventType))
-          .order("desc")
-          .take(1);
-        
-        if (events.length > 0) {
-          lastEvents[rule._id] = events[0];
+        const latestEvent = await getLatestEventForType(
+          ctx,
+          args.babyId,
+          rule.triggerConfig?.lastEventType
+        );
+
+        if (latestEvent) {
+          lastEvents[rule._id] = latestEvent;
         }
       }
     }
@@ -743,15 +817,15 @@ export const exportBabyData = query({
     const profile = await ctx.db.get(args.babyId);
     const events = await ctx.db
       .query("events")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     const caregivers = await ctx.db
       .query("caregivers")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     const reminders = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     const formulas = await ctx.db.query("formulas").collect();
     const medicines = await ctx.db.query("medicines").collect();
@@ -773,7 +847,7 @@ export const clearBabyData = mutation({
   handler: async (ctx, args) => {
     const events = await ctx.db
       .query("events")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     
     for (const event of events) {
@@ -782,7 +856,7 @@ export const clearBabyData = mutation({
 
     const reminders = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     
     for (const reminder of reminders) {
@@ -791,7 +865,7 @@ export const clearBabyData = mutation({
 
     const caregivers = await ctx.db
       .query("caregivers")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId as any))
       .collect();
     
     for (const caregiver of caregivers) {

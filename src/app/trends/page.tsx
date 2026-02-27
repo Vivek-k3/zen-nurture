@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatDuration, getDateDaysAgo } from "@/lib/time";
-import GrowthChart from "../components/GrowthChart";
-import TrendsCharts from "../components/TrendsCharts";
+import GrowthChart from "@/components/GrowthChart";
+import TrendsCharts from "@/components/TrendsCharts";
 import type { Gender } from "@/lib/who-percentiles";
+import { useBaby } from "@/components/BabyContext";
 
 type TrendsTab = "24h" | "7d" | "14d" | "30d" | "growth";
 type DiaperKindFilter = "all" | "wet" | "dirty" | "dry" | "mixed";
@@ -26,9 +27,8 @@ export default function TrendsPage() {
     setMounted(true);
   }, []);
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
   const todayStr = new Date().toISOString().split("T")[0];
-  const babyId = babyProfile?._id;
 
   const todayAggregates = useQuery(
     api.events.getDailyAggregates,
