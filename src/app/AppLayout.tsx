@@ -5,9 +5,14 @@ import { usePathname } from "next/navigation";
 import Sidebar from "./components/Sidebar";
 import QuickLoggerDrawer from "./components/QuickLoggerDrawer";
 import MoraSidebar from "./components/MoraSidebar";
+import UserMenu from "./components/UserMenu";
+import NotificationBell from "./components/NotificationBell";
+import ThemeToggle from "./components/ThemeToggle";
+import MoraOrb from "@/components/MoraOrb";
 
-export default function AppLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
+
+function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isMoraOpen, setIsMoraOpen] = useState(false);
   const moraTriggerRef = useRef<HTMLButtonElement>(null);
@@ -59,15 +64,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
-              className="flex items-center gap-2 bg-white/90 text-espresso px-4 py-2.5 rounded-full shadow-sm border border-black/5 hover:border-sage/30 hover:bg-white transition-all"
+              className="flex items-center gap-2 bg-white/90 text-espresso pl-3 pr-4 py-2 rounded-full shadow-sm border border-black/5 hover:border-sage/30 hover:bg-white transition-all"
             >
-              <span className="material-symbols-outlined text-[20px] text-sage">smart_toy</span>
+              <MoraOrb size="xs" />
               <span className="text-sm font-bold">Mora</span>
             </button>
 
-            <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center text-muted shadow-sm border border-muted/10 relative cursor-pointer hover:text-espresso transition-colors">
-              <span className="material-symbols-outlined">notifications</span>
+            <ThemeToggle />
+            <div className="relative">
+              <NotificationBell />
             </div>
+            <UserMenu />
           </div>
         </header>
 
@@ -86,10 +93,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={openMora}
               aria-expanded={isMoraOpen}
               aria-controls="mora-sidebar"
-              className="h-10 w-10 rounded-full flex items-center justify-center text-sage bg-white/80 border border-black/5"
+              className="h-10 w-10 rounded-full flex items-center justify-center bg-white/80 border border-black/5"
               aria-label="Open Mora"
             >
-              <span className="material-symbols-outlined">smart_toy</span>
+              <MoraOrb size="xs" />
             </button>
             <button type="button" className="h-10 w-10 flex items-center justify-center text-espresso">
               <span className="material-symbols-outlined">menu</span>
@@ -114,4 +121,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <MoraSidebar isOpen={isMoraOpen} onClose={closeMora} />
     </div>
   );
+}
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  if (CHROMELESS_PATHS.includes(pathname)) {
+    return <>{children}</>;
+  }
+
+  return <AuthenticatedLayout>{children}</AuthenticatedLayout>;
 }

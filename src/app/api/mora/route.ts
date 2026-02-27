@@ -14,6 +14,12 @@ type MoraClientContext = {
   pathname?: string;
   pageLabel?: string;
   timestamp?: string;
+  userName?: string;
+  userEmail?: string;
+  babyName?: string;
+  babyDob?: string;
+  babyTimezone?: string;
+  familyName?: string;
 };
 
 function getConvex() {
@@ -158,22 +164,50 @@ export async function POST(req: Request) {
   const moraSettings = await convex.query(api.mora.getMoraSettings, {});
 
   const system = [
-    "You are Mora, an AI assistant inside Zen Nurture (a baby care tracker).",
-    "Be concise, platform-aware, and action-oriented. Use tools for factual answers.",
-    "When user requests a data change, use the appropriate write tool instead of describing manual steps.",
-    "Never propose or execute unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
-    `Current page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "unknown"})`,
-    pageCapabilities(clientContext.pageLabel),
-    `Mora settings: enabled=${moraSettings.enabled}, yoloMode=${moraSettings.yoloMode}, allowWrites=${moraSettings.allowWrites}`,
-    `Known baby profile: ${babyProfile ? `${babyProfile.name || "Unnamed"} (timezone ${babyProfile.timezone || "unknown"})` : "none"}`,
-    `Recent event count (24h snapshot): ${recentEvents?.length ?? 0}`,
-    `Upcoming reminders snapshot count: ${upcomingReminders?.length ?? 0}`,
+    "You are Mora, an AI caregiver copilot inside Zen Nurture — a calm, India-first baby care tracker.",
+    "",
+    "## Personality",
+    "- Warm, concise, action-oriented. Use tools for factual answers instead of guessing.",
+    "- Address the user by first name when known. Reference the baby by name.",
+    "- When the user requests a data change, use the appropriate write tool — never describe manual steps.",
+    "- In YOLO mode, actions execute immediately. In Safe mode, actions require human approval — tell the user you've queued it.",
+    "",
+    "## Smart Reminders",
+    "- When the user asks about patterns, feeding schedules, or reminders, use analyze_patterns first.",
+    "- If you detect a clear interval (e.g. baby feeds every ~2.5h), proactively suggest creating a reminder.",
+    "- Phrase suggestions naturally: 'Baby usually feeds every 2.5 hours. Want me to set a reminder for that?'",
+    "- If the user agrees, use create_reminder with the suggested triggerConfig from analyze_patterns.",
+    "- Compare with existing reminders to avoid duplicates.",
+    "",
+    "## Proactive Nudges",
+    "- When user asks 'anything I should know?', 'is everything OK?', or 'status check', use check_nudges.",
+    "- If nudges exist, present them with empathy: 'Baby hasn't fed in 4h, which is longer than the usual 2.5h. Everything OK?'",
+    "- Suggest logging the event if overdue, or reassure if the gap is within normal range.",
+    "",
+    "## Weekly Digest",
+    "- When user asks for a weekly summary/report/digest, use generate_weekly_digest.",
+    "- Present the comparison in a friendly, scannable format with highlights and concerns.",
+    "",
+    "## Boundaries",
+    "- Never propose unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
+    "- Never fabricate data. If a tool returns empty, say so.",
+    "",
+    "## Current Context",
+    `- User: ${clientContext.userName || "Unknown"} (${clientContext.userEmail || "unknown"})`,
+    `- Family: ${clientContext.familyName || "Unknown"}`,
+    `- Baby: ${clientContext.babyName || babyProfile?.name || "Unknown"}${clientContext.babyDob ? ` (DOB: ${clientContext.babyDob})` : ""}`,
+    `- Timezone: ${clientContext.babyTimezone || babyProfile?.timezone || "Asia/Kolkata"}`,
+    `- Page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "/"})`,
+    `- ${pageCapabilities(clientContext.pageLabel)}`,
+    `- Mora settings: enabled=${moraSettings.enabled}, yoloMode=${moraSettings.yoloMode}, allowWrites=${moraSettings.allowWrites}`,
+    `- Recent events (24h): ${recentEvents?.length ?? 0}`,
+    `- Upcoming reminders: ${upcomingReminders?.length ?? 0}`,
   ].join("\n");
 
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
-    model: openai(process.env.MORA_MODEL || "gpt-5-mini"),
+    model: openai(process.env.MORA_MODEL || "gpt-4.1-nano"),
     system,
     messages: modelMessages,
     stopWhen: stepCountIs(6),
@@ -441,6 +475,137 @@ export async function POST(req: Request) {
             preview: preview ?? `Delete reminder ${id}`,
             latestUserText,
           });
+        },
+      }),
+      analyze_patterns: tool({
+        description:
+          "Analyze recent event patterns (feeding, diaper, sleep) over the last N days. " +
+          "Returns average intervals, typical times, and suggested reminder configs. " +
+          "Use this proactively when the user asks about patterns, or when suggesting smart reminders.",
+        inputSchema: z.object({
+          days: z.number().int().min(1).max(30).optional(),
+          eventTypes: z.array(z.string()).optional(),
+        }),
+        execute: async ({ days = 7, eventTypes }) => {
+          const profile = await convex.query(api.events.getBabyProfile, {});
+          if (!profile?._id) return { error: "No baby profile" };
+
+          const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+          const to = new Date().toISOString();
+
+          const typesToAnalyze = eventTypes ?? [
+            "FEED_BOTTLE", "FEED_BREAST", "DIAPER", "SLEEP", "MED_DOSE",
+          ];
+
+          const results: Record<string, any> = {};
+
+          for (const type of typesToAnalyze) {
+            const events = await convex.query(api.events.listEvents, {
+              babyId: profile._id,
+              from,
+              to,
+              type,
+              limit: 500,
+            } as any);
+
+            if (!events || events.length < 2) {
+              results[type] = { count: events?.length ?? 0, intervalHours: null, suggestion: null };
+              continue;
+            }
+
+            const timestamps = events
+              .map((e: any) => new Date(e.timestamp).getTime())
+              .sort((a: number, b: number) => a - b);
+
+            const intervals: number[] = [];
+            for (let i = 1; i < timestamps.length; i++) {
+              intervals.push((timestamps[i] - timestamps[i - 1]) / (1000 * 60 * 60));
+            }
+
+            const avgHours = intervals.reduce((s, v) => s + v, 0) / intervals.length;
+            const medianHours = intervals.sort((a, b) => a - b)[Math.floor(intervals.length / 2)];
+            const minHours = Math.min(...intervals);
+            const maxHours = Math.max(...intervals);
+
+            const hours = timestamps.map((t: number) => new Date(t).getHours());
+            const hourCounts: Record<number, number> = {};
+            hours.forEach((h: number) => { hourCounts[h] = (hourCounts[h] || 0) + 1; });
+            const peakHours = Object.entries(hourCounts)
+              .sort(([, a], [, b]) => (b as number) - (a as number))
+              .slice(0, 3)
+              .map(([h]) => Number(h));
+
+            const roundedInterval = Math.round(avgHours * 2) / 2;
+
+            results[type] = {
+              count: events.length,
+              daysAnalyzed: days,
+              avgIntervalHours: Math.round(avgHours * 10) / 10,
+              medianIntervalHours: Math.round(medianHours * 10) / 10,
+              minIntervalHours: Math.round(minHours * 10) / 10,
+              maxIntervalHours: Math.round(maxHours * 10) / 10,
+              peakHoursOfDay: peakHours,
+              perDay: Math.round((events.length / days) * 10) / 10,
+              suggestedReminder: {
+                title: `${type.replace(/_/g, " ")} reminder`,
+                intervalHours: roundedInterval,
+                triggerType: "afterLastEventType",
+                triggerConfig: {
+                  lastEventType: type,
+                  intervalHours: roundedInterval,
+                },
+              },
+            };
+          }
+
+          const existingRules = await convex.query(api.events.listReminderRules, {
+            babyId: profile._id,
+          } as any);
+
+          return {
+            patterns: results,
+            existingReminderCount: existingRules?.length ?? 0,
+            existingReminders: (existingRules ?? []).map((r: any) => ({
+              id: r._id,
+              title: r.title,
+              category: r.category,
+              triggerType: r.triggerType,
+              enabled: r.enabled,
+            })),
+          };
+        },
+      }),
+      check_nudges: tool({
+        description:
+          "Check for proactive nudges — unusual gaps in feeding, diapers, or sleep " +
+          "compared to the baby's historical averages. Also checks for skipped meds. " +
+          "Use when user asks 'anything I should know?' or 'is everything on track?'",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, {});
+          if (!profile?._id) return { nudges: [] };
+          return await convex.query(api.nudges.getActiveNudges, { babyId: profile._id });
+        },
+      }),
+      generate_weekly_digest: tool({
+        description:
+          "Generate a weekly digest comparing this week vs last week. " +
+          "Returns stats comparison and an AI-written summary. " +
+          "Use when user asks for a weekly summary, report, or digest.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, {});
+          if (!profile?._id) return { error: "No baby profile" };
+
+          const comparison = await convex.query(api.digest.getWeeklyComparison, {
+            babyId: profile._id,
+          });
+
+          return {
+            babyName: profile.name,
+            ...comparison,
+            hint: "Present this data as a friendly weekly digest. Compare this week vs last week. Highlight improvements and flag any concerns.",
+          };
         },
       }),
     },

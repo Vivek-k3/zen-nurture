@@ -110,6 +110,15 @@ export const getOrCreateMoraThread = mutation({
   },
 });
 
+export const closeMoraThread = mutation({
+  args: { threadId: v.id("moraThreads") },
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return;
+    await ctx.db.patch(args.threadId, { status: "closed" });
+  },
+});
+
 export const listMoraMessages = query({
   args: {
     threadId: v.id("moraThreads"),

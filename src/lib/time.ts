@@ -98,3 +98,34 @@ export function getRelativeTimeString(date: Date | string): string {
   if (isYesterday(date)) return "Yesterday";
   return formatDate(date);
 }
+
+export function formatBabyAge(dob: string | Date): string {
+  const birth = new Date(dob);
+  const now = new Date();
+
+  let years = now.getFullYear() - birth.getFullYear();
+  let months = now.getMonth() - birth.getMonth();
+  let days = now.getDate() - birth.getDate();
+
+  if (days < 0) {
+    months--;
+    const prev = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prev.getDate();
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  const totalDays = Math.floor(
+    (now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (totalDays === 0) return "Born today!";
+  if (totalDays < 0) return `Due in ${Math.abs(totalDays)}d`;
+
+  if (years >= 2) return `${years} years old`;
+  if (years === 1) return `${years} year${months ? `, ${months}mo` : ""} old`;
+  if (months >= 1) return `${months}mo${days ? `, ${days}d` : ""} old`;
+  return `${totalDays} day${totalDays !== 1 ? "s" : ""} old`;
+}
