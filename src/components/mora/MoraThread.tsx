@@ -9,6 +9,7 @@ import {
 } from "@assistant-ui/react";
 import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { ShimmeringText } from "@/components/shimmering-text/shimmering-text";
 import MoraOrb from "@/components/MoraOrb";
 import VoiceButton from "./VoiceButton";
 
@@ -47,9 +48,12 @@ function MoraWelcome({ quickPrompts }: { quickPrompts: string[] }) {
             Ask about feeds, sleep, diapers, reminders, or trends. I&rsquo;ll
             ask for approval before changes unless YOLO mode is on.
           </p>
+          <p className="text-[11px] mt-1.5">
+            <ShimmeringText text="Ready when you are" duration={2} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />
+          </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" data-tour-step-id="mora-prompts">
           {quickPrompts.map((prompt) => (
             <ThreadPrimitive.Suggestion key={prompt} prompt={prompt} autoSend asChild>
               <button
@@ -139,7 +143,10 @@ function MoraComposer() {
   );
 
   return (
-    <div className="border-t border-black/5 bg-white/70 backdrop-blur-sm p-3">
+    <div
+      className="border-t border-black/5 bg-white/70 backdrop-blur-sm p-3"
+      data-tour-step-id="mora-composer"
+    >
       <ComposerPrimitive.Root className="flex items-end gap-2">
         <VoiceButton onTranscript={handleVoiceTranscript} />
         <ComposerPrimitive.Input

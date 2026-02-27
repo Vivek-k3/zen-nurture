@@ -9,6 +9,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { api } from "../../../../convex/_generated/api";
+import { getToken } from "@/lib/auth";
 
 type MoraClientContext = {
   pathname?: string;
@@ -22,12 +23,14 @@ type MoraClientContext = {
   familyName?: string;
 };
 
-function getConvex() {
+function getConvex(token?: string) {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!url) {
     throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured");
   }
-  return new ConvexHttpClient(url);
+  const client = new ConvexHttpClient(url);
+  if (token) client.setAuth(token);
+  return client;
 }
 
 function getLatestUserText(messages: UIMessage[]) {
@@ -136,6 +139,14 @@ export async function POST(req: Request) {
     );
   }
 
+  const token = await getToken();
+  if (!token) {
+    return new Response(
+      JSON.stringify({ error: "Unauthenticated" }),
+      { status: 401, headers: { "content-type": "application/json" } }
+    );
+  }
+
   const body = (await req.json()) as {
     messages: UIMessage[];
     threadId?: string;
@@ -145,7 +156,7 @@ export async function POST(req: Request) {
   const messages = body.messages ?? [];
   const threadId = body.threadId;
   const clientContext = body.clientContext ?? {};
-  const convex = getConvex();
+  const convex = getConvex(token);
   const latestUserText = getLatestUserText(messages);
 
   const babyProfile = await convex.query(api.events.getBabyProfile, {});
@@ -584,7 +595,10 @@ export async function POST(req: Request) {
         execute: async () => {
           const profile = await convex.query(api.events.getBabyProfile, {});
           if (!profile?._id) return { nudges: [] };
-          return await convex.query(api.nudges.getActiveNudges, { babyId: profile._id });
+          return await convex.query(api.nudges.getActiveNudges, {
+            babyId: profile._id,
+            now: new Date().toISOString(),
+          });
         },
       }),
       generate_weekly_digest: tool({

@@ -12,7 +12,14 @@ async function proxy(request: NextRequest): Promise<Response> {
 
   const fwdHeaders: Record<string, string> = {};
   request.headers.forEach((value, key) => {
-    if (key === "host" || key === "transfer-encoding" || key === "connection") return;
+    if (
+      key === "host" ||
+      key === "transfer-encoding" ||
+      key === "connection" ||
+      key === "content-length"
+    ) {
+      return;
+    }
     fwdHeaders[key] = value;
   });
   fwdHeaders["host"] = new URL(CONVEX_SITE_URL).host;
@@ -27,7 +34,14 @@ async function proxy(request: NextRequest): Promise<Response> {
 
     const respHeaders = new Headers();
     resp.headers.forEach((value, key) => {
-      if (key === "transfer-encoding" || key === "connection") return;
+      if (
+        key === "transfer-encoding" ||
+        key === "connection" ||
+        key === "content-encoding" ||
+        key === "content-length"
+      ) {
+        return;
+      }
       respHeaders.append(key, value);
     });
 

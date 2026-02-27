@@ -1,12 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
-
-async function requireAuth(ctx: any) {
-  const user = await authComponent.safeGetAuthUser(ctx);
-  if (!user) throw new Error("Unauthenticated");
-  return user;
-}
+import { requireAuth } from "./lib/auth";
 
 export const listMyFamilies = query({
   args: {},
@@ -174,8 +169,9 @@ export const listPendingInvitations = query({
 
     return await ctx.db
       .query("familyInvitations")
-      .withIndex("by_familyId", (q) => q.eq("familyId", args.familyId))
-      .filter((q) => q.eq(q.field("status"), "pending"))
+      .withIndex("by_familyId_status", (q) =>
+        q.eq("familyId", args.familyId).eq("status", "pending")
+      )
       .collect();
   },
 });

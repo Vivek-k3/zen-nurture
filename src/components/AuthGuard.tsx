@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -12,7 +12,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession();
   const pathname = usePathname();
   const router = useRouter();
-  const redirecting = useRef(false);
 
   const families = useQuery(
     api.families.listMyFamilies,
@@ -21,28 +20,25 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
   const isOnboarding = pathname === "/onboarding";
+  const isFamiliesLoading = !!session && !isPublic && !isOnboarding && families === undefined;
   const needsLogin = !isPending && !session && !isPublic;
+  const familyCount = families?.length ?? 0;
   const needsOnboarding =
-    !isPending && !!session && !isOnboarding && !isPublic && families !== undefined && families.length === 0;
+    !isPending && !!session && !isOnboarding && !isPublic && !isFamiliesLoading && familyCount === 0;
 
   useEffect(() => {
-    if (redirecting.current) return;
+    if (isPending || isPublic || isFamiliesLoading) return;
+
     if (needsLogin) {
-      redirecting.current = true;
-      router.push("/sign-in");
+      router.replace("/sign-in");
     } else if (needsOnboarding) {
-      redirecting.current = true;
-      router.push("/onboarding");
+      router.replace("/onboarding");
     }
-  }, [needsLogin, needsOnboarding, router]);
-
-  useEffect(() => {
-    redirecting.current = false;
-  }, [pathname]);
+  }, [isPending, isPublic, isFamiliesLoading, needsLogin, needsOnboarding, pathname, router]);
 
   if (isPublic) return <>{children}</>;
 
-  if (isPending || needsLogin || needsOnboarding) {
+  if (isPending || isFamiliesLoading || needsLogin || needsOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-oat">
         <div className="text-center">

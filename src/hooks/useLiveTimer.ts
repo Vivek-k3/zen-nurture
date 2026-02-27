@@ -16,11 +16,10 @@ export function formatElapsed(fromMs: number, nowMs: number): string {
   const totalSec = Math.floor(diff / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
 
   if (h > 0) return `${h}h ${pad(m)}m`;
-  if (m > 0) return `${m}m ${pad(s)}s`;
-  return `${s}s`;
+  if (m > 0) return `${m}m`;
+  return "<1m";
 }
 
 export function formatElapsedCompact(fromMs: number, nowMs: number): string {
@@ -28,9 +27,8 @@ export function formatElapsedCompact(fromMs: number, nowMs: number): string {
   const totalSec = Math.floor(diff / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
 
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}`;
 }
 
 function pad(n: number) {

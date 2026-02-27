@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
@@ -48,7 +48,7 @@ export function BabyProvider({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
 
-  const babyList = babies ?? [];
+  const babyList = useMemo(() => babies ?? [], [babies]);
 
   // Auto-select first baby if none stored
   useEffect(() => {

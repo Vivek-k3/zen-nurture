@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
 import ActivityFeed from "./ActivityFeed";
 import BabySwitcher from "@/components/BabySwitcher";
 import { useBaby } from "@/components/BabyContext";

@@ -1,17 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
 import { Switch } from "@/components/ui/switch";
 import PhotoAttacher from "@/components/PhotoAttacher";
 import FormulaPicker from "@/components/FormulaPicker";
 import MedicinePicker from "@/components/MedicinePicker";
+import DateTimeWheelPicker from "@/components/DateTimeWheelPicker";
+import { useBaby } from "@/components/BabyContext";
+
+export type QuickLogPrefill = {
+  view: "feed" | "diaper" | "sleep" | "meds";
+  feedSubType?: "bottle" | "breast";
+  volume?: number;
+  duration?: number;
+  diaperKind?: "wet" | "dirty" | "dry" | "mixed";
+  medName?: string;
+  isSleepingNow?: boolean;
+};
 
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  initialPrefill?: QuickLogPrefill | null;
 }
 
 type LogType = "menu" | "feed" | "diaper" | "sleep" | "meds" | "note" | "growth" | "pump";
@@ -29,6 +42,16 @@ type LogTileProps = {
   onClick: () => void;
 };
 
+type VolumePickerCardProps = {
+  value: number;
+  onChange: (value: number) => void;
+  presets: number[];
+  sliderClassName: string;
+  presetClassName: string;
+};
+
+const MAX_FEED_VOLUME_ML = 300;
+
 function LogTile({ icon, label, color, onClick }: LogTileProps) {
   return (
     <button
@@ -44,7 +67,97 @@ function LogTile({ icon, label, color, onClick }: LogTileProps) {
   );
 }
 
-const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }) => {
+function VolumePickerCard({
+  value,
+  onChange,
+  presets,
+  sliderClassName,
+  presetClassName,
+}: VolumePickerCardProps) {
+  const [manualValue, setManualValue] = useState(String(value));
+
+  useEffect(() => {
+    setManualValue(String(value));
+  }, [value]);
+
+  const commitManualValue = (nextValue: string) => {
+    const sanitizedValue = nextValue.replace(/[^\d]/g, "");
+
+    if (!sanitizedValue) {
+      setManualValue("");
+      return;
+    }
+
+    const clampedValue = Math.min(MAX_FEED_VOLUME_ML, Math.max(0, Number(sanitizedValue)));
+    setManualValue(String(clampedValue));
+    onChange(clampedValue);
+  };
+
+  const restoreOrClampManualValue = () => {
+    if (!manualValue) {
+      setManualValue(String(value));
+      return;
+    }
+
+    const clampedValue = Math.min(MAX_FEED_VOLUME_ML, Math.max(0, Number(manualValue)));
+    setManualValue(String(clampedValue));
+    onChange(clampedValue);
+  };
+
+  return (
+    <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
+      {/* <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
+        {value}
+        <span className="text-lg text-muted ml-1">ml</span>
+      </div> */}
+
+      <div className="mx-auto flex max-w-[220px] items-center gap-3 rounded-2xl border border-muted/10 bg-oat/70 px-4 py-3">
+        <label htmlFor="feed-volume" className="text-xs font-bold uppercase tracking-wider text-muted">
+          Amount
+        </label>
+        <input
+          id="feed-volume"
+          type="number"
+          inputMode="numeric"
+          min="0"
+          max={MAX_FEED_VOLUME_ML}
+          step="1"
+          value={manualValue}
+          onChange={(event) => commitManualValue(event.target.value)}
+          onBlur={restoreOrClampManualValue}
+          onFocus={(event) => event.target.select()}
+          className="w-full bg-transparent text-right text-lg font-bold text-espresso outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span className="text-sm font-bold text-muted">ml</span>
+      </div>
+
+      <input
+        type="range"
+        min="0"
+        max={MAX_FEED_VOLUME_ML}
+        step="10"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className={sliderClassName}
+      />
+
+      <div className="flex justify-center gap-2 pt-2">
+        {presets.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => onChange(preset)}
+            className={presetClassName}
+          >
+            {preset}ml
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, initialPrefill }) => {
   const [view, setView] = useState<LogType>("menu");
   const [feedSubType, setFeedSubType] = useState<FeedSubType>("bottle");
   const [diaperKind, setDiaperKind] = useState<DiaperKind>("wet");
@@ -60,8 +173,9 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
   const [weight, setWeight] = useState(0);
   const [height, setHeight] = useState(0);
   const [headCm, setHeadCm] = useState(0);
-  const [sleepStart, setSleepStart] = useState("");
-  const [sleepEnd, setSleepEnd] = useState("");
+  const [eventTimestamp, setEventTimestamp] = useState(() => getCurrentMinute());
+  const [sleepStart, setSleepStart] = useState(() => getMinutesAgo(30));
+  const [sleepEnd, setSleepEnd] = useState(() => getCurrentMinute());
   const [bottleContentType, setBottleContentType] = useState<BottleContentType>("formula");
   const [selectedFormulaId, setSelectedFormulaId] = useState<string>("");
   const [formulaCompany, setFormulaCompany] = useState("");
@@ -75,7 +189,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
   const [isSleepingNow, setIsSleepingNow] = useState(false);
   const [photoIds, setPhotoIds] = useState<string[]>([]);
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  const { activeBaby: babyProfile } = useBaby();
   const createEvent = useMutation(api.events.createEvent);
   const upsertFormula = useMutation(api.events.upsertFormula);
   const formulas = useQuery(api.events.listFormulas);
@@ -85,12 +199,27 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     return [company.trim(), type.trim(), name.trim()].filter(Boolean).join(" - ");
   };
 
+  const handleSleepStartChange = (nextDate: Date) => {
+    setSleepStart(nextDate);
+    if (!isSleepingNow && nextDate.getTime() > sleepEnd.getTime()) {
+      setSleepEnd(nextDate);
+    }
+  };
+
+  const handleSleepEndChange = (nextDate: Date) => {
+    setSleepEnd(nextDate);
+    if (nextDate.getTime() < sleepStart.getTime()) {
+      setSleepStart(nextDate);
+    }
+  };
+
   const handleSaveEvent = async () => {
     if (!babyProfile?._id) return;
 
-    const timestamp = new Date().toISOString();
+    const loggedAt = eventTimestamp.toISOString();
     let payload: any = {};
     let eventType = "";
+    let timestamp = loggedAt;
 
     switch (view) {
       case "feed":
@@ -127,10 +256,11 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
         };
         break;
       case "sleep":
+        timestamp = (isSleepingNow ? sleepStart : sleepEnd).toISOString();
         eventType = "SLEEP";
         payload = {
-          startTs: isSleepingNow ? timestamp : (sleepStart ? new Date(sleepStart).toISOString() : timestamp),
-          endTs: isSleepingNow ? null : (sleepEnd ? new Date(sleepEnd).toISOString() : null),
+          startTs: sleepStart.toISOString(),
+          endTs: isSleepingNow ? null : sleepEnd.toISOString(),
           kind: "nap",
         };
         break;
@@ -173,21 +303,22 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     }
   };
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setVolume(120);
     setDuration(15);
     setNoteText("");
     setWeight(0);
     setHeight(0);
     setHeadCm(0);
+    setEventTimestamp(getCurrentMinute());
     setHasRash(false);
     setHasBlowout(false);
     setDiaperKind("wet");
     setDiaperTexture(undefined);
     setDiaperColor(undefined);
     setBreastSide("left");
-    setSleepStart("");
-    setSleepEnd("");
+    setSleepStart(getMinutesAgo(30));
+    setSleepEnd(getCurrentMinute());
     setBottleContentType("formula");
     setSelectedFormulaId("");
     setFormulaCompany("");
@@ -200,16 +331,33 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     setMedOutcome("taken");
     setIsSleepingNow(false);
     setPhotoIds([]);
-  };
+  }, []);
+
+  const initialPrefillRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && initialPrefill && !initialPrefillRef.current) {
+      initialPrefillRef.current = true;
+      setView(initialPrefill.view);
+      if (initialPrefill.feedSubType) setFeedSubType(initialPrefill.feedSubType);
+      if (initialPrefill.volume != null) setVolume(initialPrefill.volume);
+      if (initialPrefill.duration != null) setDuration(initialPrefill.duration);
+      if (initialPrefill.diaperKind) setDiaperKind(initialPrefill.diaperKind);
+      if (initialPrefill.medName) setMedName(initialPrefill.medName);
+      if (initialPrefill.isSleepingNow != null) setIsSleepingNow(initialPrefill.isSleepingNow);
+    }
+  }, [isOpen, initialPrefill]);
 
   useEffect(() => {
     if (!isOpen) {
-      setTimeout(() => {
+      initialPrefillRef.current = false;
+      const id = setTimeout(() => {
         setView("menu");
         resetForm();
       }, 300);
+      return () => clearTimeout(id);
     }
-  }, [isOpen]);
+  }, [isOpen, resetForm]);
 
   if (!isOpen) return null;
 
@@ -344,73 +492,57 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 
           {view === "feed" && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              {feedSubType !== "pump" && (
-                <div className="flex bg-oat p-1 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setFeedSubType("bottle")}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                      feedSubType === "bottle"
-                        ? "bg-white shadow-sm text-espresso"
-                        : "text-muted hover:text-espresso"
-                    }`}
-                  >
-                    Bottle
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFeedSubType("breast")}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                      feedSubType === "breast"
-                        ? "bg-white shadow-sm text-espresso"
-                        : "text-muted hover:text-espresso"
-                    }`}
-                  >
-                    Breast
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFeedSubType("pump")}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                      (feedSubType as string) === "pump"
-                        ? "bg-white shadow-sm text-espresso"
-                        : "text-muted hover:text-espresso"
-                    }`}
-                  >
-                    Pump
-                  </button>
-                </div>
-              )}
+              <DateTimeWheelPicker
+                label={getEventTimeLabel(view, feedSubType)}
+                value={eventTimestamp}
+                onChange={setEventTimestamp}
+              />
+
+              <div className="flex bg-oat p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFeedSubType("bottle")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    feedSubType === "bottle"
+                      ? "bg-white shadow-sm text-espresso"
+                      : "text-muted hover:text-espresso"
+                  }`}
+                >
+                  Bottle
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedSubType("breast")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    feedSubType === "breast"
+                      ? "bg-white shadow-sm text-espresso"
+                      : "text-muted hover:text-espresso"
+                  }`}
+                >
+                  Breast
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedSubType("pump")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    feedSubType === "pump"
+                      ? "bg-white shadow-sm text-espresso"
+                      : "text-muted hover:text-espresso"
+                  }`}
+                >
+                  Pump
+                </button>
+              </div>
 
               {feedSubType === "bottle" && (
                 <>
-                  <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
-                    <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
-                      {volume}
-                      <span className="text-lg text-muted ml-1">ml</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="300"
-                      step="10"
-                      value={volume}
-                      onChange={(e) => setVolume(Number(e.target.value))}
-                      className="w-full accent-sage"
-                    />
-                    <div className="flex justify-center gap-2 pt-2">
-                      {[60, 90, 120, 150, 180].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setVolume(v)}
-                          className="px-3 py-1 rounded-full bg-oat text-xs font-bold text-muted hover:bg-sage/10 hover:text-sage transition-colors"
-                        >
-                          {v}ml
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <VolumePickerCard
+                    value={volume}
+                    onChange={setVolume}
+                    presets={[60, 90, 120, 150, 180]}
+                    sliderClassName="w-full accent-sage"
+                    presetClassName="px-3 py-1 rounded-full bg-oat text-xs font-bold text-muted hover:bg-sage/10 hover:text-sage transition-colors"
+                  />
 
                   <div className="space-y-3">
                     <label htmlFor="contents" className="text-xs font-bold text-muted uppercase tracking-wider">
@@ -496,39 +628,25 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
               )}
 
               {feedSubType === "pump" && (
-                <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
-                  <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
-                    {volume}
-                    <span className="text-lg text-muted ml-1">ml</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="300"
-                    step="10"
-                    value={volume}
-                    onChange={(e) => setVolume(Number(e.target.value))}
-                    className="w-full accent-dusty-blue"
-                  />
-                  <div className="flex justify-center gap-2 pt-2">
-                    {[30, 60, 90, 120, 150].map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => setVolume(v)}
-                        className="px-3 py-1 rounded-full bg-oat text-xs font-bold text-muted hover:bg-dusty-blue/10 hover:text-dusty-blue transition-colors"
-                      >
-                        {v}ml
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <VolumePickerCard
+                  value={volume}
+                  onChange={setVolume}
+                  presets={[30, 60, 90, 120, 150]}
+                  sliderClassName="w-full accent-dusty-blue"
+                  presetClassName="px-3 py-1 rounded-full bg-oat text-xs font-bold text-muted hover:bg-dusty-blue/10 hover:text-dusty-blue transition-colors"
+                />
               )}
             </div>
           )}
 
           {view === "diaper" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <DateTimeWheelPicker
+                label={getEventTimeLabel(view, feedSubType)}
+                value={eventTimestamp}
+                onChange={setEventTimestamp}
+              />
+
               <div className="flex items-center justify-center gap-4">
                 {(["wet", "dirty", "dry"] as const).map((kind) => (
                   <button
@@ -612,11 +730,14 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
               <button
                 type="button"
                 onClick={() => {
-                  setIsSleepingNow(!isSleepingNow);
-                  if (!isSleepingNow) {
-                    setSleepStart("");
-                    setSleepEnd("");
+                  const now = getCurrentMinute();
+                  if (isSleepingNow) {
+                    setSleepEnd(now);
+                  } else {
+                    setSleepStart((current) => normalizeToMinute(current));
+                    setSleepEnd(now);
                   }
+                  setIsSleepingNow(!isSleepingNow);
                 }}
                 className={`w-full py-5 rounded-2xl flex flex-col items-center gap-2 transition-all border ${
                   isSleepingNow
@@ -644,31 +765,17 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
                   </div>
 
                   <div className="space-y-4">
-                    <div className="bg-white rounded-2xl p-4 border border-muted/10">
-                      <label htmlFor="sleep-start" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
-                        Sleep Start
-                      </label>
-                      <input
-                        id="sleep-start"
-                        type="datetime-local"
-                        value={sleepStart}
-                        onChange={(e) => setSleepStart(e.target.value)}
-                        className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
-                      />
-                    </div>
+                    <DateTimeWheelPicker
+                      label="Sleep Start"
+                      value={sleepStart}
+                      onChange={handleSleepStartChange}
+                    />
 
-                    <div className="bg-white rounded-2xl p-4 border border-muted/10">
-                      <label htmlFor="sleep-end" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
-                        Woke Up
-                      </label>
-                      <input
-                        id="sleep-end"
-                        type="datetime-local"
-                        value={sleepEnd}
-                        onChange={(e) => setSleepEnd(e.target.value)}
-                        className="w-full p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg focus:outline-none focus:ring-2 focus:ring-night/20"
-                      />
-                    </div>
+                    <DateTimeWheelPicker
+                      label="Woke Up"
+                      value={sleepEnd}
+                      onChange={handleSleepEndChange}
+                    />
                   </div>
 
                   <div className="flex gap-2">
@@ -681,10 +788,10 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
                         key={mins}
                         type="button"
                         onClick={() => {
-                          const now = new Date();
+                          const now = getCurrentMinute();
                           const start = new Date(now.getTime() - mins * 60 * 1000);
-                          setSleepStart(start.toISOString().slice(0, 16));
-                          setSleepEnd(now.toISOString().slice(0, 16));
+                          setSleepStart(start);
+                          setSleepEnd(now);
                         }}
                         className="flex-1 py-2.5 rounded-xl bg-night/5 text-night text-sm font-medium hover:bg-night/10 transition-colors"
                       >
@@ -694,11 +801,25 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
                   </div>
                 </>
               )}
+
+              {isSleepingNow && (
+                <DateTimeWheelPicker
+                  label="Started Sleeping"
+                  value={sleepStart}
+                  onChange={setSleepStart}
+                />
+              )}
             </div>
           )}
 
           {view === "meds" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <DateTimeWheelPicker
+                label={getEventTimeLabel(view, feedSubType)}
+                value={eventTimestamp}
+                onChange={setEventTimestamp}
+              />
+
               <div className="space-y-3">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">Medicine</label>
                 <MedicinePicker
@@ -770,6 +891,12 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 
           {view === "note" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <DateTimeWheelPicker
+                label={getEventTimeLabel(view, feedSubType)}
+                value={eventTimestamp}
+                onChange={setEventTimestamp}
+              />
+
               <textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
@@ -781,6 +908,12 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 
           {view === "growth" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <DateTimeWheelPicker
+                label={getEventTimeLabel(view, feedSubType)}
+                value={eventTimestamp}
+                onChange={setEventTimestamp}
+              />
+
               <div className="bg-white rounded-2xl p-4 border border-muted/10">
                 <label htmlFor="growth-weight" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
                   Weight (kg)
@@ -827,6 +960,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
               </div>
             </div>
           )}
+
         </div>
 
         {view !== "menu" && (
@@ -851,3 +985,29 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
 };
 
 export default QuickLoggerDrawer;
+
+function getCurrentMinute() {
+  return normalizeToMinute(new Date());
+}
+
+function getMinutesAgo(minutes: number) {
+  return normalizeToMinute(new Date(Date.now() - minutes * 60 * 1000));
+}
+
+function normalizeToMinute(date: Date) {
+  const next = new Date(date);
+  next.setSeconds(0, 0);
+  return next;
+}
+
+function getEventTimeLabel(view: LogType, feedSubType: FeedSubType) {
+  if (view === "feed") {
+    if (feedSubType === "pump") return "Pump Started";
+    return "Feed Started";
+  }
+  if (view === "diaper") return "Diaper Changed";
+  if (view === "meds") return "Medicine Given";
+  if (view === "note") return "Note Added";
+  if (view === "growth") return "Measurement Taken";
+  return "Event Time";
+}

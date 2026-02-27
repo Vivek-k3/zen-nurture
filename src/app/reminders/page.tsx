@@ -4,17 +4,111 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatTime, formatTimeSince, isToday } from "@/lib/time";
+import { DataState } from "@/components/DataState";
+
+function TimePickerList({
+  times,
+  onChange,
+}: {
+  times: string[];
+  onChange: (times: string[]) => void;
+}) {
+  const formatTimeDisplay = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes);
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  };
+
+  const handleAddTime = () => {
+    const newTime = times.length > 0 ? times[times.length - 1] : "09:00";
+    onChange([...times, newTime]);
+  };
+
+  const handleRemoveTime = (idx: number) => {
+    if (times.length <= 1) return;
+    onChange(times.filter((_, i) => i !== idx));
+  };
+
+  const handleTimeChange = (idx: number, newTime: string) => {
+    const newTimes = [...times];
+    newTimes[idx] = newTime;
+    onChange(newTimes);
+  };
+
+  const items = times.map((timeStr, idx) => ({ key: `${timeStr}-${idx}`, time: timeStr }));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {items.map((item, idx) => (
+          <div
+            key={item.key}
+            className="flex items-center gap-1 bg-white rounded-full border border-muted/20 pr-1 hover:border-sage/40 transition-colors"
+          >
+            <label className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+              <input
+                type="time"
+                value={item.time}
+                onChange={(e) => handleTimeChange(idx, e.target.value)}
+                className="opacity-0 absolute w-8 h-8 cursor-pointer"
+              />
+              <span className="text-sm font-medium text-espresso select-none">
+                {formatTimeDisplay(item.time)}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => handleRemoveTime(idx)}
+              disabled={times.length <= 1}
+              className="h-7 w-7 rounded-full flex items-center justify-center text-muted hover:bg-alert-red/10 hover:text-alert-red disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted transition-colors"
+            >
+              <span className="material-symbols-outlined text-xs">close</span>
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={handleAddTime}
+        className="inline-flex items-center gap-1 px-3 py-2 rounded-full border border-dashed border-muted/30 text-sm font-medium text-muted hover:bg-oat/30 hover:border-muted/40 hover:text-espresso transition-colors"
+      >
+        <span className="material-symbols-outlined text-sm">add</span>
+        Add Time
+      </button>
+    </div>
+  );
+}
 
 export default function RemindersPage() {
   const [mounted, setMounted] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newReminder, setNewReminder] = useState({
-    title: "",
+    title: "Feeding reminder",
     category: "feed",
     triggerType: "fixedTimes",
     times: ["09:00", "15:00", "21:00"],
     intervalHours: 3,
   });
+
+  const defaultTitles: Record<string, string> = {
+    feed: "Feeding reminder",
+    diaper: "Diaper change",
+    medicine: "Medicine",
+    custom: "Custom reminder",
+  };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleCategoryChange = (category: string) => {
+    setNewReminder((prev) => ({
+      ...prev,
+      category,
+      title: defaultTitles[category] || "Reminder",
+    }));
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -77,7 +171,7 @@ export default function RemindersPage() {
 
     setShowAddModal(false);
     setNewReminder({
-      title: "",
+      title: "Feeding reminder",
       category: "feed",
       triggerType: "fixedTimes",
       times: ["09:00", "15:00", "21:00"],
@@ -115,13 +209,18 @@ export default function RemindersPage() {
         </div>
       ) : (
         <>
-          {upcomingReminders && upcomingReminders.length > 0 && (
+          <DataState
+            value={upcomingReminders}
+            loadingFallback={null}
+            emptyFallback={null}
+          >
+            {(list) => list.length > 0 && (
             <div className="mb-8">
               <h2 className="text-sm font-bold text-muted uppercase tracking-wider mb-4">Upcoming</h2>
               <div className="space-y-3">
-                {upcomingReminders.slice(0, 5).map((reminder: any, index: number) => (
+                  {list.slice(0, 5).map((reminder: any) => (
                   <div
-                    key={index}
+                    key={reminder._id}
                     className={`bg-white rounded-[16px] p-4 shadow-sm border border-muted/10 flex items-center justify-between ${
                       reminder.isOverdue ? "border-alert-red/30 bg-alert-red/5" : ""
                     }`}
@@ -143,13 +242,51 @@ export default function RemindersPage() {
                 ))}
               </div>
             </div>
-          )}
+            )}
+          </DataState>
 
           <div>
             <h2 className="text-sm font-bold text-muted uppercase tracking-wider mb-4">Reminder Rules</h2>
-            {reminderRules && reminderRules.length > 0 ? (
+            <DataState
+              value={reminderRules}
+              loadingFallback={
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="bg-white rounded-[16px] p-4 shadow-sm border border-muted/10 flex items-center justify-between animate-pulse"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-6 w-11 rounded-full bg-muted/10" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-40 rounded-full bg-muted/10" />
+                          <div className="h-3 w-28 rounded-full bg-muted/10" />
+                        </div>
+                      </div>
+                      <div className="h-8 w-8 rounded-full bg-muted/10" />
+                    </div>
+                  ))}
+                </div>
+              }
+              emptyFallback={
+                <div className="bg-white rounded-[20px] p-8 text-center shadow-sm border border-muted/10">
+                  <span className="material-symbols-outlined text-4xl text-muted mb-4">notifications_none</span>
+                  <h3 className="text-lg font-bold text-espresso mb-2">No reminders yet</h3>
+                  <p className="text-muted mb-4">Create your first reminder to stay on track</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(true)}
+                    className="inline-flex items-center gap-2 bg-sage text-white px-4 py-2 rounded-full font-bold hover:bg-sage/90 transition-colors"
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                    Add Reminder
+                  </button>
+                </div>
+              }
+            >
+              {(rules) => rules.length > 0 ? (
               <div className="space-y-3">
-                {reminderRules.map((rule: any) => (
+                  {rules.map((rule: any) => (
                   <div
                     key={rule._id}
                     className="bg-white rounded-[16px] p-4 shadow-sm border border-muted/10 flex items-center justify-between"
@@ -186,21 +323,8 @@ export default function RemindersPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="bg-white rounded-[20px] p-8 text-center shadow-sm border border-muted/10">
-                <span className="material-symbols-outlined text-4xl text-muted mb-4">notifications_none</span>
-                <h3 className="text-lg font-bold text-espresso mb-2">No reminders yet</h3>
-                <p className="text-muted mb-4">Create your first reminder to stay on track</p>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex items-center gap-2 bg-sage text-white px-4 py-2 rounded-full font-bold hover:bg-sage/90 transition-colors"
-                >
-                  <span className="material-symbols-outlined">add</span>
-                  Add Reminder
-                </button>
-              </div>
-            )}
+              ) : null}
+            </DataState>
           </div>
         </>
       )}
@@ -227,23 +351,11 @@ export default function RemindersPage() {
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-2">
-                <label htmlFor="reminder-title" className="text-xs font-bold text-muted uppercase tracking-wider">Title</label>
-                <input
-                  id="reminder-title"
-                  type="text"
-                  value={newReminder.title}
-                  onChange={(e) => setNewReminder({ ...newReminder, title: e.target.value })}
-                  placeholder="e.g., Feed reminder"
-                  className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                />
-              </div>
-
-              <div className="space-y-2">
                 <label htmlFor="reminder-category" className="text-xs font-bold text-muted uppercase tracking-wider">Category</label>
                 <select
                   id="reminder-category"
                   value={newReminder.category}
-                  onChange={(e) => setNewReminder({ ...newReminder, category: e.target.value })}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
                 >
                   <option value="feed">Feeding</option>
@@ -251,6 +363,17 @@ export default function RemindersPage() {
                   <option value="medicine">Medicine</option>
                   <option value="custom">Custom</option>
                 </select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="reminder-title" className="text-xs font-bold text-muted uppercase tracking-wider">Title</label>
+                <input
+                  id="reminder-title"
+                  type="text"
+                  value={newReminder.title}
+                  onChange={(e) => setNewReminder({ ...newReminder, title: e.target.value })}
+                  className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
+                />
               </div>
 
               <div className="space-y-2">
@@ -268,17 +391,10 @@ export default function RemindersPage() {
 
               {newReminder.triggerType === "fixedTimes" && (
                 <div className="space-y-2">
-                  <label htmlFor="reminder-times" className="text-xs font-bold text-muted uppercase tracking-wider">Times</label>
-                  <input
-                    id="reminder-times"
-                    type="text"
-                    value={newReminder.times.join(", ")}
-                    onChange={(e) => setNewReminder({ 
-                      ...newReminder, 
-                      times: e.target.value.split(",").map(t => t.trim()) 
-                    })}
-                    placeholder="09:00, 15:00, 21:00"
-                    className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider block">Times</span>
+                  <TimePickerList
+                    times={newReminder.times}
+                    onChange={(times) => setNewReminder({ ...newReminder, times })}
                   />
                 </div>
               )}

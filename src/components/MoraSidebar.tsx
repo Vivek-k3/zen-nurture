@@ -1,16 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { DefaultChatTransport } from "ai";
 import { Button } from "@/components/ui/button";
+import { useTour } from "@/components/ui/tour";
 import MoraOrb from "@/components/MoraOrb";
-import MoraThread from "./mora/MoraThread";
-import MoraToolUIs from "./mora/MoraToolUIs";
+import MoraThread from "@/components/mora/MoraThread";
+import MoraToolUIs from "@/components/mora/MoraToolUIs";
+import { DataState } from "@/components/DataState";
+
+function MoraTourButton() {
+  const { start } = useTour();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => start("mora")}
+      className="h-7 px-2 text-[11px] text-muted hover:text-espresso gap-1"
+    >
+      <span className="material-symbols-outlined text-[16px]">tour</span>
+      Tour
+    </Button>
+  );
+}
 import { authClient } from "@/lib/auth-client";
 
 interface MoraSidebarProps {
@@ -58,7 +76,7 @@ function MoraRuntimeProvider({
 
   useEffect(() => {
     let active = true;
-    setThreadId(null);
+    if (prevThreadRef.current) setThreadId(null);
     void (async () => {
       try {
         if (prevThreadRef.current) {
@@ -72,7 +90,6 @@ function MoraRuntimeProvider({
       } catch {}
     })();
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey, babyProfile?._id]);
 
   const transport = useMemo(
@@ -94,7 +111,6 @@ function MoraRuntimeProvider({
           },
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pathname, pageLabel, sessionKey, threadId]
   );
 
@@ -157,7 +173,10 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
         className="fixed inset-y-0 right-0 z-50 w-full md:w-[520px] bg-[#FEFCF8] shadow-2xl border-l border-black/5 flex flex-col animate-in slide-in-from-right duration-300"
       >
         {/* Header */}
-        <div className="border-b border-black/5 px-4 md:px-5 py-3">
+        <div
+          className="border-b border-black/5 px-4 md:px-5 py-3"
+          data-tour-step-id="mora-intro"
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <MoraOrb size="sm" state="idle" />
@@ -172,6 +191,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
               }`}>
                 {yoloOn ? "YOLO" : "Safe"}
               </span>
+              <MoraTourButton />
               <Button
                 variant="ghost"
                 size="sm"
@@ -197,12 +217,12 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
               <p className="text-[13px] text-muted mb-4">
                 Enable Mora in Settings to use the AI assistant.
               </p>
-              <a
+              <Link
                 href="/settings"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-espresso text-oat text-[12px] font-semibold"
               >
                 Open Settings
-              </a>
+              </Link>
             </div>
           </div>
         ) : (
