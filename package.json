@@ -7,7 +7,7 @@
     "cdev": "concurrently -n convex,next \"convex dev\" \"portless zen next dev\"",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "convex": "convex dev"
   },
   "dependencies": {
@@ -56,10 +56,12 @@
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10",
     "concurrently": "^9.2.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "postcss": "^8",
     "shadcn": "^3.8.5",
     "tailwindcss": "^4.2.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.56.1"
   },
   "packageManager": "pnpm@9.10.0",
   "overrides": {

@@ -379,7 +379,9 @@ export default function TrendsPage() {
                 </div>
               }
             >
-              {(agg) => (
+              {(agg) => {
+                if (!agg) return null;
+                return (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
                     <div className="flex items-center gap-2 mb-3">
@@ -424,7 +426,8 @@ export default function TrendsPage() {
                     </div>
                   </div>
                 </div>
-              )}
+                );
+              }}
             </DataState>
           ) : timeRange === "7d" || timeRange === "14d" || timeRange === "30d" ? (
             <DataState

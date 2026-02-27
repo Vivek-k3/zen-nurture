@@ -90,7 +90,6 @@ function MoraRuntimeProvider({
       } catch {}
     })();
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey, babyProfile?._id]);
 
   const transport = useMemo(
@@ -112,7 +111,6 @@ function MoraRuntimeProvider({
           },
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pathname, pageLabel, sessionKey, threadId]
   );
 
