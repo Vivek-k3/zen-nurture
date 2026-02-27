@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-export function useLiveTimer(interval = 60_000) {
+export function useLiveTimer(interval = 1000) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {

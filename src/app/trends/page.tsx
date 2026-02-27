@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { formatDuration, getDateDaysAgo } from "@/lib/time";
+import { formatDuration } from "@/lib/time";
 import GrowthChart from "@/components/GrowthChart";
 const TrendsCharts = dynamic(
   () => import("@/components/TrendsCharts"),
@@ -32,22 +32,28 @@ export default function TrendsPage() {
   const [feedContentFilter, setFeedContentFilter] = useState<string>("all");
   const [medicineFilter, setMedicineFilter] = useState<string>("all");
   const [mounted, setMounted] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayStr = useMemo(() => new Date(nowMs).toISOString().split("T")[0], [nowMs]);
   const rangeDays = timeRange === "14d" ? 14 : timeRange === "30d" ? 30 : 7;
   const rangeStartISO = useMemo(
-    () => getDateDaysAgo(rangeDays - 1).toISOString(),
-    [rangeDays]
+    () => new Date(nowMs - (rangeDays - 1) * 24 * 60 * 60 * 1000).toISOString(),
+    [rangeDays, nowMs]
   );
-  const weekAgoISO = useMemo(() => getDateDaysAgo(6).toISOString(), []);
-  const nowISO = useMemo(() => new Date().toISOString(), []);
+  const weekAgoISO = useMemo(() => new Date(nowMs - 6 * 24 * 60 * 60 * 1000).toISOString(), [nowMs]);
+  const nowISO = useMemo(() => new Date(nowMs).toISOString(), [nowMs]);
 
-  const sixtyDaysAgo = useMemo(() => getDateDaysAgo(59).toISOString(), []);
+  const sixtyDaysAgo = useMemo(() => new Date(nowMs - 59 * 24 * 60 * 60 * 1000).toISOString(), [nowMs]);
   const formulasUsed = useQuery(
     api.events.getFormulasUsedByBaby,
     babyId ? { babyId, from: sixtyDaysAgo } : "skip"

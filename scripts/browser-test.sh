@@ -9,17 +9,17 @@ if [ -z "${EMAIL:-}" ] || [ -z "${PASS:-}" ]; then
 fi
 
 echo "1. Opening sign-in..."
-agent-browser open "$URL/sign-in" 2>&1 || true
+agent-browser open "$URL/sign-in" 2>&1
 
 echo "2. Snapshot..."
 agent-browser snapshot -i 2>&1 | head -80
 
 echo "3. Filling form (semantic locators)..."
-agent-browser find label "Email" fill "$EMAIL" 2>&1 || true
-agent-browser find label "Password" fill "$PASS" 2>&1 || true
+agent-browser find label "Email" fill "$EMAIL" 2>&1
+agent-browser find label "Password" fill "$PASS" 2>&1
 
 echo "4. Clicking Sign In..."
-agent-browser find role button click --name "Sign In" 2>&1 || true
+agent-browser find role button click --name "Sign In" 2>&1
 
 echo "5. Waiting for redirect..."
 sleep 3

@@ -40,6 +40,10 @@ export async function DELETE(req: Request) {
     }
 
     const body = await req.json();
+    if (!body?.endpoint || typeof body.endpoint !== "string") {
+      return Response.json({ error: "endpoint required" }, { status: 400 });
+    }
+
     const convex = getConvex(token);
     await convex.mutation(api.push.unsubscribe, { endpoint: body.endpoint });
     return Response.json({ ok: true });

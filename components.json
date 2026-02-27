@@ -17,15 +17,7 @@
     "hooks": "@/hooks"
   },
   "registries": {
-    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
     "@assistant-ui": "https://r.assistant-ui.com/{name}.json",
-    "@tool-ui": "https://www.tool-ui.com/r/{name}.json",
-    "@lucide-animated": "https://lucide-animated.com/r/{name}.json",
-    "@ncdai": "https://chanhdai.com/r/{name}.json",
-    "@prompt-kit": "https://www.prompt-kit.com/c/{name}.json",
-    "@tour": "https://onboarding-tour.vercel.app/r/{name}.json",
-    "@taki": "https://taki-ui.com/r/{name}.json",
-    "@wigggle-ui": "https://wigggle-ui.vercel.app/r/{name}.json",
-    "@wigggleui": "https://wigggle-ui.vercel.app/r/{name}.json"
+    "@ncdai": "https://chanhdai.com/r/{name}.json"
   }
 }

@@ -37,10 +37,13 @@ function useMinuteClock() {
 
 export default function NudgeBanner({ babyId, onOpenMora }: NudgeBannerProps) {
   const nowIso = useMinuteClock();
+  const shouldFetchNudges = Boolean(babyId);
   const nudges = useQuery(
     api.nudges.getActiveNudges,
-    babyId ? { babyId, now: nowIso } : "skip"
+    shouldFetchNudges ? { babyId, now: nowIso } : "skip"
   );
+
+  if (!shouldFetchNudges) return null;
 
   if (nudges === undefined) {
     return (

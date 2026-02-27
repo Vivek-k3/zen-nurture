@@ -13,7 +13,9 @@ export default function Error({
         <span className="material-symbols-outlined text-5xl text-alert-red/60 mb-4">error</span>
         <h2 className="text-xl font-bold text-espresso mb-2">Something went wrong</h2>
         <p className="text-sm text-muted mb-6">
-          {error.message || "An error occurred. Please try again."}
+          {process.env.NODE_ENV === "development"
+            ? (error?.message || "An error occurred. Please try again.")
+            : "Something went wrong. Please try again."}
         </p>
         <button
           type="button"

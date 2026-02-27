@@ -14,7 +14,9 @@ export default function GlobalError({
           <span className="material-symbols-outlined text-5xl text-alert-red/60 mb-4">error</span>
           <h1 className="text-xl font-bold text-espresso mb-2">Something went wrong</h1>
           <p className="text-sm text-muted mb-6">
-            {error.message || "A client-side error occurred. Check your connection and try again."}
+            {process.env.NODE_ENV === "development"
+              ? (error?.message || "A client-side error occurred. Check your connection and try again.")
+              : "Something went wrong. Please try again."}
           </p>
           <button
             type="button"

@@ -20,23 +20,25 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
   const isOnboarding = pathname === "/onboarding";
+  const isFamiliesLoading = !!session && !isPublic && !isOnboarding && families === undefined;
   const needsLogin = !isPending && !session && !isPublic;
+  const familyCount = families?.length ?? 0;
   const needsOnboarding =
-    !isPending && !!session && !isOnboarding && !isPublic && families !== undefined && families.length === 0;
+    !isPending && !!session && !isOnboarding && !isPublic && !isFamiliesLoading && familyCount === 0;
 
   useEffect(() => {
-    if (isPending || isPublic) return;
+    if (isPending || isPublic || isFamiliesLoading) return;
 
     if (needsLogin) {
       router.replace("/sign-in");
     } else if (needsOnboarding) {
       router.replace("/onboarding");
     }
-  }, [isPending, isPublic, needsLogin, needsOnboarding, pathname, router]);
+  }, [isPending, isPublic, isFamiliesLoading, needsLogin, needsOnboarding, pathname, router]);
 
   if (isPublic) return <>{children}</>;
 
-  if (isPending || needsLogin || needsOnboarding) {
+  if (isPending || isFamiliesLoading || needsLogin || needsOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-oat">
         <div className="text-center">
