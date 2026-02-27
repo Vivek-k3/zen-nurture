@@ -4,9 +4,33 @@ const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY!;
 const CRON_SECRET = process.env.CRON_SECRET;
 const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL!;
+const FETCH_TIMEOUT_MS = 8000;
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(`mailto:noreply@zennurture.app`, VAPID_PUBLIC, VAPID_PRIVATE);
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function POST(req: Request) {
@@ -23,14 +47,14 @@ export async function POST(req: Request) {
       return Response.json({ error: "babyId and familyId required" }, { status: 400 });
     }
 
-    const res = await fetch(`${CONVEX_SITE_URL}/api/push/cron-subs`, {
+    const res = await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-subs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${CRON_SECRET}`,
       },
       body: JSON.stringify({ babyId, familyId }),
-    });
+    }, FETCH_TIMEOUT_MS);
 
     if (!res.ok) {
       return Response.json({ error: "Failed to fetch reminder data" }, { status: 502 });
@@ -76,14 +100,14 @@ export async function POST(req: Request) {
         } catch (err: unknown) {
           const statusCode = (err as { statusCode?: number })?.statusCode;
           if (statusCode === 404 || statusCode === 410) {
-            await fetch(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
+            await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${CRON_SECRET}`,
               },
               body: JSON.stringify({ endpoint: sub.endpoint }),
-            });
+            }, FETCH_TIMEOUT_MS);
           }
         }
       }

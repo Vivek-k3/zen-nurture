@@ -149,6 +149,13 @@ export const getBabyProfile = query({
   },
 });
 
+export const internalGetBabyProfileById = internalQuery({
+  args: { babyId: v.id("babyProfiles") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.babyId);
+  },
+});
+
 export const createBabyProfile = mutation({
   args: {
     familyId: v.id("families"),

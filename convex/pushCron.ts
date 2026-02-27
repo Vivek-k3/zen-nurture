@@ -33,6 +33,16 @@ export const getSubsForCron = httpAction(async (ctx, request) => {
   }
 
   if (body.familyId && body.babyId) {
+    const baby = await ctx.runQuery(internal.events.internalGetBabyProfileById, {
+      babyId: body.babyId,
+    });
+    if (!baby || baby.familyId !== body.familyId) {
+      return new Response(
+        JSON.stringify({ error: "babyId does not belong to familyId" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const [subs, upcoming] = await Promise.all([
       ctx.runQuery(internal.push.listSubscriptionsForFamily, {
         familyId: body.familyId,

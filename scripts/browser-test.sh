@@ -2,8 +2,11 @@
 # agent-browser flow: sign in and navigate pages
 set -e
 URL="http://localhost:4861"
-EMAIL="v@v.com"
-PASS="qwertyuiop"
+
+if [ -z "${EMAIL:-}" ] || [ -z "${PASS:-}" ]; then
+  echo "EMAIL and PASS environment variables must be set before running scripts/browser-test.sh" >&2
+  exit 1
+fi
 
 echo "1. Opening sign-in..."
 agent-browser open "$URL/sign-in" 2>&1 || true
