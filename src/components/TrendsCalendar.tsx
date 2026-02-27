@@ -4,13 +4,13 @@ import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { formatTime, formatDuration, isToday } from "@/lib/time";
-import { EVENT_TYPE_ICONS } from "@/lib/constants";
+import type { Id } from "../../convex/_generated/dataModel";
 
-function getMondayOfWeek(d: Date): Date {
+const TIME_LABELS = ["12 AM", "3", "6 AM", "9", "12 PM", "3", "6 PM", "9", "12 AM"];
+
+function getSundayOfWeek(d: Date): Date {
   const copy = new Date(d);
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
+  copy.setDate(copy.getDate() - copy.getDay());
   copy.setHours(0, 0, 0, 0);
   return copy;
 }
@@ -22,90 +22,133 @@ function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function getWeekDates(monday: Date): string[] {
+function getWeekDatesSundayFirst(anchor: Date): string[] {
   const dates: string[] = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
+    const d = new Date(anchor);
+    d.setDate(anchor.getDate() + i);
     dates.push(toLocalDateStr(d));
   }
   return dates;
 }
 
-function getEventDetail(type: string, payload: Record<string, unknown>): string | null {
+const EVENT_COLORS: Record<string, string> = {
+  FEED_BOTTLE: "#7C9A82",
+  FEED_BREAST: "#7C9A82",
+  PUMP: "#6B8CAE",
+  DIAPER: "#C4A484",
+  SLEEP: "#7986CB",
+  MED_DOSE: "#E57373",
+  VACCINE_DOSE: "#9C7CF4",
+};
+
+function getEventDuration(
+  type: string,
+  payload: Record<string, unknown> | undefined
+): number {
+  if (!payload) return 15;
   switch (type) {
-    case "FEED_BOTTLE": {
-      const parts = [];
-      if (payload.amountMl) parts.push(`${payload.amountMl}ml`);
-      if (payload.formulaName) parts.push(String(payload.formulaName));
-      else if (payload.contentType === "breast_milk") parts.push("Breast Milk");
-      else if (payload.contentType === "cow_milk") parts.push("Cow Milk");
-      return parts.length ? parts.join(" · ") : null;
-    }
-    case "FEED_BREAST": {
-      const parts = [];
-      if (payload.durationMin) parts.push(`${payload.durationMin}min`);
-      if (payload.side) parts.push(String(payload.side));
-      return parts.length ? parts.join(" · ") : null;
-    }
-    case "PUMP":
-      return payload.amountMl ? `${payload.amountMl}ml` : null;
-    case "DIAPER": {
-      const parts = [];
-      if (payload.kind) parts.push(String(payload.kind));
-      if (payload.texture) parts.push(String(payload.texture));
-      if (payload.color) parts.push(String(payload.color));
-      if (payload.blowout) parts.push("blowout");
-      if (payload.rash) parts.push("rash");
-      return parts.length ? parts.join(" · ") : null;
-    }
-    case "SLEEP": {
-      if (!payload.startTs || !payload.endTs) return "In progress";
-      const start = new Date(payload.startTs as string).getTime();
-      const end = new Date(payload.endTs as string).getTime();
-      const min = Math.floor((end - start) / 60000);
-      return formatDuration(min);
-    }
+    case "SLEEP":
+      if (payload.startTs && payload.endTs) {
+        const start = new Date(payload.startTs as string).getTime();
+        const end = new Date(payload.endTs as string).getTime();
+        return Math.max(5, Math.floor((end - start) / 60000));
+      }
+      return 30;
+    case "FEED_BOTTLE":
+    case "FEED_BREAST":
+      return (payload.durationMin as number) ?? 15;
+    case "DIAPER":
+    case "MED_DOSE":
+    case "VACCINE_DOSE":
+      return 5;
     default:
-      return null;
+      return 15;
   }
 }
 
-interface TrendsCalendarProps {
-  babyId: string;
-  aggFilters?: { formulaName?: string; feedContentType?: string; medicineName?: string };
+function getEventStartTs(type: string, timestamp: string, payload: Record<string, unknown> | undefined): string {
+  if (type === "SLEEP" && payload?.startTs) {
+    return payload.startTs as string;
+  }
+  return timestamp;
 }
 
-export default function TrendsCalendar({ babyId, aggFilters = {} }: TrendsCalendarProps) {
-  const [weekAnchor, setWeekAnchor] = useState(() => getMondayOfWeek(new Date()));
-  const [selectedDate, setSelectedDate] = useState<string | null>(() =>
-    toLocalDateStr(new Date())
-  );
+interface TimelineEvent {
+  id: string;
+  type: string;
+  dateStr: string;
+  startMinutes: number;
+  durationMinutes: number;
+  color: string;
+}
 
-  const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
+interface TrendsCalendarProps {
+  babyId: Id<"babyProfiles">;
+  aggFilters?: { formulaName?: string; feedContentType?: string; medicineName?: string };
+  eventTypes?: string[];
+}
+
+export default function TrendsCalendar({
+  babyId,
+  aggFilters = {},
+  eventTypes,
+}: TrendsCalendarProps) {
+  const [weekAnchor, setWeekAnchor] = useState(() => getSundayOfWeek(new Date()));
+  const weekDates = useMemo(() => getWeekDatesSundayFirst(weekAnchor), [weekAnchor]);
   const fromISO = useMemo(() => `${weekDates[0]}T00:00:00.000Z`, [weekDates]);
   const toISO = useMemo(() => `${weekDates[6]}T23:59:59.999Z`, [weekDates]);
 
-  const rangeAggregates = useQuery(
-    api.events.getRangeAggregates,
-    babyId ? { babyId, from: fromISO, to: toISO, ...aggFilters } : "skip"
+  const typesForQuery = useMemo(() => {
+    if (!eventTypes || eventTypes.length === 0) return undefined;
+    const map: Record<string, string[]> = {
+      feed: ["FEED_BOTTLE", "FEED_BREAST", "PUMP"],
+      diaper: ["DIAPER"],
+      sleep: ["SLEEP"],
+      health: ["MED_DOSE", "VACCINE_DOSE"],
+    };
+    const flat = eventTypes.flatMap((t) => map[t] ?? []);
+    return flat.length > 0 ? flat : undefined;
+  }, [eventTypes]);
+
+  const events = useQuery(
+    api.events.getEventsForRange,
+    babyId ? { babyId, from: fromISO, to: toISO, types: typesForQuery, limit: 3000 } : "skip"
   );
 
-  const dayEvents = useQuery(
-    api.events.getEventsByDate,
-    babyId && selectedDate ? { babyId, date: selectedDate } : "skip"
-  );
-
-  const feeds = (dayEvents ?? []).filter(
-    (e) => e.type === "FEED_BOTTLE" || e.type === "FEED_BREAST"
-  );
-  const diapers = (dayEvents ?? []).filter((e) => e.type === "DIAPER");
-  const sleeps = (dayEvents ?? []).filter((e) => e.type === "SLEEP");
+  const timelineByDay = useMemo(() => {
+    const byDay: Record<string, TimelineEvent[]> = {};
+    for (const dateStr of weekDates) {
+      byDay[dateStr] = [];
+    }
+    for (const e of events ?? []) {
+      const dateStr = e.timestamp.split("T")[0];
+      if (!byDay[dateStr]) continue;
+      const startTs = getEventStartTs(e.type, e.timestamp, e.payload as Record<string, unknown> | undefined);
+      const startDate = new Date(startTs);
+      const startMinutes =
+        startDate.getHours() * 60 + startDate.getMinutes() + startDate.getSeconds() / 60;
+      const durationMinutes = getEventDuration(e.type, e.payload as Record<string, unknown> | undefined);
+      const color = EVENT_COLORS[e.type] ?? "#9CA3AF";
+      byDay[dateStr].push({
+        id: e._id,
+        type: e.type,
+        dateStr,
+        startMinutes,
+        durationMinutes,
+        color,
+      });
+    }
+    for (const dateStr of weekDates) {
+      byDay[dateStr].sort((a, b) => a.startMinutes - b.startMinutes);
+    }
+    return byDay;
+  }, [events, weekDates]);
 
   const weekLabel = useMemo(() => {
     const end = new Date(weekAnchor);
     end.setDate(weekAnchor.getDate() + 6);
-    return `${weekAnchor.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${end.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+    return `${weekAnchor.toLocaleDateString("en-IN", { month: "short" })}`;
   }, [weekAnchor]);
 
   const goPrevWeek = () => {
@@ -121,13 +164,13 @@ export default function TrendsCalendar({ babyId, aggFilters = {} }: TrendsCalend
   };
 
   const goToThisWeek = () => {
-    setWeekAnchor(getMondayOfWeek(new Date()));
-    setSelectedDate(toLocalDateStr(new Date()));
+    setWeekAnchor(getSundayOfWeek(new Date()));
   };
+
+  const dowLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
   return (
     <div className="space-y-4">
-      {/* Week nav */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
@@ -137,6 +180,7 @@ export default function TrendsCalendar({ babyId, aggFilters = {} }: TrendsCalend
           >
             <span className="material-symbols-outlined text-xl">chevron_left</span>
           </button>
+          <span className="text-sm font-bold text-espresso">{weekLabel}</span>
           <button
             type="button"
             onClick={goNextWeek}
@@ -145,7 +189,6 @@ export default function TrendsCalendar({ babyId, aggFilters = {} }: TrendsCalend
             <span className="material-symbols-outlined text-xl">chevron_right</span>
           </button>
         </div>
-        <h3 className="text-sm font-bold text-espresso">{weekLabel}</h3>
         <button
           type="button"
           onClick={goToThisWeek}
@@ -155,194 +198,90 @@ export default function TrendsCalendar({ babyId, aggFilters = {} }: TrendsCalend
         </button>
       </div>
 
-      {/* Week grid */}
-      <div className="grid grid-cols-7 gap-2">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dow) => (
-          <div
-            key={dow}
-            className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1"
-          >
-            {dow}
-          </div>
-        ))}
-        {weekDates.map((dateStr) => {
-          const agg = rangeAggregates?.[dateStr];
-          const feedCount = agg?.feeds?.count ?? 0;
-          const diaperCount = agg?.diapers?.count ?? 0;
-          const sleepSessions = agg?.sleeps?.sessions ?? 0;
-          const isSelected = selectedDate === dateStr;
-          const d = new Date(dateStr + "T12:00:00");
-          const dayNum = d.getDate();
-
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              onClick={() => setSelectedDate(dateStr)}
-              className={`rounded-xl p-3 text-left min-h-[88px] border-2 transition-all ${
-                isSelected
-                  ? "border-sage bg-sage/5 shadow-sm"
-                  : "border-transparent bg-white hover:bg-oat/50 border-muted/10"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span
-                  className={`text-sm font-bold ${
-                    isToday(dateStr) ? "text-sage" : "text-espresso"
-                  }`}
+      <div className="overflow-x-auto">
+        <div className="min-w-[600px]">
+          {/* Day headers */}
+          <div className="grid grid-cols-[3rem_1fr_1fr_1fr_1fr_1fr_1fr_1fr] gap-px mb-1">
+            <div />
+            {weekDates.map((dateStr, i) => {
+              const d = new Date(dateStr + "T12:00:00");
+              const dayNum = d.getDate();
+              return (
+                <div
+                  key={dateStr}
+                  className="text-center text-[10px] font-bold text-muted py-1"
                 >
-                  {dayNum}
-                </span>
-                {isToday(dateStr) && (
-                  <span className="text-[9px] font-bold text-sage bg-sage/20 px-1.5 py-0.5 rounded">
-                    Today
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {feedCount > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] bg-sage/15 text-sage rounded px-1.5 py-0.5 font-mono">
-                    <span className="material-symbols-outlined text-[12px]">water_drop</span>
-                    {feedCount}
-                  </span>
-                )}
-                {diaperCount > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] bg-clay/15 text-clay rounded px-1.5 py-0.5 font-mono">
-                    <span className="material-symbols-outlined text-[12px]">baby_changing_station</span>
-                    {diaperCount}
-                  </span>
-                )}
-                {sleepSessions > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] bg-night/15 text-night rounded px-1.5 py-0.5 font-mono">
-                    <span className="material-symbols-outlined text-[12px]">bedtime</span>
-                    {sleepSessions}
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                  <div>{dowLabels[i]}</div>
+                  <div
+                    className={
+                      isToday(dateStr) ? "text-sage" : "text-espresso"
+                    }
+                  >
+                    {dayNum}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-      {/* Selected day detail */}
-      {selectedDate && (
-        <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
-          <h3 className="text-sm font-bold text-espresso mb-4">
-            {isToday(selectedDate)
-              ? "Today"
-              : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-IN", {
-                  weekday: "long",
-                  month: "short",
-                  day: "numeric",
-                })}
-          </h3>
+          {/* Timeline grid */}
+          <div className="grid grid-cols-[3rem_1fr_1fr_1fr_1fr_1fr_1fr_1fr] gap-px border border-muted/20 rounded-xl overflow-hidden bg-muted/5">
+            {/* Time labels */}
+            <div className="flex flex-col">
+              {TIME_LABELS.map((label, i) => (
+                <div
+                  key={label + i}
+                  className="flex items-center justify-end pr-2 py-1 text-[10px] text-muted border-b border-dotted border-muted/20 min-h-[2rem]"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
 
-          <div className="space-y-4">
-            {/* Feed sessions */}
-            <Section title="Feed sessions" icon="water_drop" color="sage" count={feeds.length}>
-              {feeds.length === 0 ? (
-                <p className="text-xs text-muted">No feeds logged</p>
-              ) : (
-                <ul className="space-y-2">
-                  {feeds.map((e) => (
-                    <SessionRow
-                      key={e._id}
-                      time={e.timestamp}
-                      icon={EVENT_TYPE_ICONS[e.type] ?? "restaurant"}
-                      detail={getEventDetail(e.type, e.payload ?? {})}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Section>
-
-            {/* Diaper sessions */}
-            <Section title="Diaper sessions" icon="baby_changing_station" color="clay" count={diapers.length}>
-              {diapers.length === 0 ? (
-                <p className="text-xs text-muted">No diapers logged</p>
-              ) : (
-                <ul className="space-y-2">
-                  {diapers.map((e) => (
-                    <SessionRow
-                      key={e._id}
-                      time={e.timestamp}
-                      icon="baby_changing_station"
-                      detail={getEventDetail(e.type, e.payload ?? {})}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Section>
-
-            {/* Sleep sessions */}
-            <Section title="Sleep sessions" icon="bedtime" color="night" count={sleeps.length}>
-              {sleeps.length === 0 ? (
-                <p className="text-xs text-muted">No sleep logged</p>
-              ) : (
-                <ul className="space-y-2">
-                  {sleeps.map((e) => (
-                    <SessionRow
-                      key={e._id}
-                      time={e.timestamp}
-                      icon="bedtime"
-                      detail={getEventDetail(e.type, e.payload ?? {})}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Section>
+            {/* Day columns */}
+            {weekDates.map((dateStr) => (
+              <DayColumn
+                key={dateStr}
+                events={timelineByDay[dateStr] ?? []}
+              />
+            ))}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-const COLOR_CLASSES: Record<string, string> = {
-  sage: "text-sage",
-  clay: "text-clay",
-  night: "text-night",
-};
-
-function Section({
-  title,
-  icon,
-  color,
-  count,
-  children,
-}: {
-  title: string;
-  icon: string;
-  color: "sage" | "clay" | "night";
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`material-symbols-outlined text-lg ${COLOR_CLASSES[color] ?? "text-muted"}`}>{icon}</span>
-        <h4 className="text-xs font-bold text-muted uppercase tracking-wider">{title}</h4>
-        <span className="text-[10px] font-mono text-muted">({count})</span>
       </div>
-      {children}
     </div>
   );
 }
 
-function SessionRow({
-  time,
-  icon,
-  detail,
-}: {
-  time: string;
-  icon: string;
-  detail: string | null;
-}) {
+function DayColumn({ events }: { events: TimelineEvent[] }) {
+  const totalMinutes = 24 * 60;
+  const rowHeight = 32;
+
   return (
-    <li className="flex items-center gap-3 py-2 px-3 rounded-xl bg-oat/30">
-      <span className="text-[11px] font-mono text-muted shrink-0">{formatTime(time)}</span>
-      <span className="material-symbols-outlined text-base text-muted">{icon}</span>
-      <span className="text-sm text-espresso truncate">{detail ?? "—"}</span>
-    </li>
+    <div
+      className="relative min-h-[256px] border-l border-muted/10 last:border-r-0"
+      style={{ minHeight: 8 * rowHeight }}
+    >
+      {events.map((ev) => {
+        const topPct = (ev.startMinutes / totalMinutes) * 100;
+        const heightPct = Math.min(
+          (ev.durationMinutes / totalMinutes) * 100,
+          100 - topPct
+        );
+        const minHeight = Math.max(2, (ev.durationMinutes / 60) * rowHeight);
+        return (
+          <div
+            key={ev.id}
+            className="absolute left-1 right-1 rounded-sm opacity-90 hover:opacity-100 transition-opacity"
+            style={{
+              top: `${topPct}%`,
+              height: `${heightPct}%`,
+              minHeight: `${minHeight}px`,
+              backgroundColor: ev.color,
+            }}
+            title={`${ev.type} · ${formatDuration(ev.durationMinutes)}`}
+          />
+        );
+      })}
+    </div>
   );
 }

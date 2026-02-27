@@ -469,12 +469,31 @@ export const getDailyAggregates = query({
       else if (payload?.outcome === "skipped") medsSkipped++;
     });
 
+    const bottleSizeAvg =
+      feedCount > 0 && totalFeedMl > 0 ? Math.round(totalFeedMl / feedCount) : 0;
+
+    const feedEvents = events
+      .filter((e) => (e.type === "FEED_BOTTLE" || e.type === "FEED_BREAST") && matchFeed(e))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    let avgGapMin = 0;
+    if (feedEvents.length >= 2) {
+      let totalGap = 0;
+      for (let i = 1; i < feedEvents.length; i++) {
+        const prev = new Date(feedEvents[i - 1].timestamp).getTime();
+        const curr = new Date(feedEvents[i].timestamp).getTime();
+        totalGap += Math.floor((curr - prev) / 60000);
+      }
+      avgGapMin = Math.round(totalGap / (feedEvents.length - 1));
+    }
+
     return {
       date: args.date,
       feeds: {
         totalMl: totalFeedMl,
         totalBreastMin,
         count: feedCount,
+        bottleSizeAvg,
+        avgGapMin,
       },
       diapers: {
         wet: diaperWet,
@@ -502,6 +521,15 @@ export const getDailyAggregates = query({
   },
 });
 
+const TRENDS_EVENT_TYPE_GROUPS: Record<string, string[]> = {
+  feed: ["FEED_BOTTLE", "FEED_BREAST", "PUMP"],
+  diaper: ["DIAPER"],
+  sleep: ["SLEEP"],
+  health: ["MED_DOSE", "VACCINE_DOSE"],
+  notes: ["NOTE"],
+  photos: [], // filter by photoIds, not type
+};
+
 export const getRangeAggregates = query({
   args: {
     babyId: v.id("babyProfiles"),
@@ -510,17 +538,35 @@ export const getRangeAggregates = query({
     formulaName: v.optional(v.string()),
     feedContentType: v.optional(v.string()),
     medicineName: v.optional(v.string()),
+    eventTypes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const user = await authComponent.safeGetAuthUser(ctx);
     if (!user) return {};
     await requireBabyAccess(ctx, args.babyId, user._id);
-    const events = await ctx.db
+    let events = await ctx.db
       .query("events")
       .withIndex("by_babyId_timestamp", (q) =>
         q.eq("babyId", args.babyId).gte("timestamp", args.from).lte("timestamp", args.to)
       )
       .collect();
+
+    if (args.eventTypes && args.eventTypes.length > 0) {
+      const flatTypes = new Set(
+        args.eventTypes.flatMap((g) => TRENDS_EVENT_TYPE_GROUPS[g] ?? [g])
+      );
+      const hasPhotos = args.eventTypes.includes("photos");
+      const hasNotes = args.eventTypes.includes("notes");
+      const hasTypeFilter = flatTypes.size > 0;
+      if (hasTypeFilter || hasPhotos || hasNotes) {
+        events = events.filter((e) => {
+          if (hasPhotos && (e.photoIds?.length ?? 0) > 0) return true;
+          if (hasNotes && (e.type === "NOTE" || (e.payload as { notes?: string })?.notes)) return true;
+          if (hasTypeFilter && flatTypes.has(e.type)) return true;
+          return false;
+        });
+      }
+    }
 
     const dailyData: Record<string, any> = {};
     const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
@@ -596,7 +642,108 @@ export const getRangeAggregates = query({
       }
     });
 
+    for (const date of Object.keys(dailyData)) {
+      const f = dailyData[date].feeds;
+      f.bottleSizeAvg =
+        f.count > 0 && f.totalMl > 0 ? Math.round(f.totalMl / f.count) : 0;
+    }
+
     return dailyData;
+  },
+});
+
+export const getTrendsRangeSummary = query({
+  args: {
+    babyId: v.id("babyProfiles"),
+    from: v.string(),
+    to: v.string(),
+    formulaName: v.optional(v.string()),
+    feedContentType: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId).gte("timestamp", args.from).lte("timestamp", args.to)
+      )
+      .collect();
+
+    const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
+      if (e.type === "FEED_BOTTLE") {
+        if (args.formulaName) return (e.payload?.formulaName ?? "") === args.formulaName;
+        if (args.feedContentType) return (e.payload?.contentType ?? "formula") === args.feedContentType;
+        return true;
+      }
+      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      return false;
+    };
+
+    const feedEvents = events
+      .filter(
+        (e) =>
+          (e.type === "FEED_BOTTLE" || e.type === "FEED_BREAST") && matchFeed(e)
+      )
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    let totalMl = 0;
+    let count = 0;
+    let avgGapMin = 0;
+    for (const e of feedEvents) {
+      const p = e.payload as { amountMl?: number; durationMin?: number };
+      if (e.type === "FEED_BOTTLE" && p?.amountMl) {
+        totalMl += p.amountMl;
+        count++;
+      } else if (e.type === "FEED_BREAST") {
+        count++;
+      }
+    }
+    const bottleSizeAvg = count > 0 && totalMl > 0 ? Math.round(totalMl / count) : 0;
+    if (feedEvents.length >= 2) {
+      let totalGap = 0;
+      for (let i = 1; i < feedEvents.length; i++) {
+        const prev = new Date(feedEvents[i - 1].timestamp).getTime();
+        const curr = new Date(feedEvents[i].timestamp).getTime();
+        totalGap += Math.floor((curr - prev) / 60000);
+      }
+      avgGapMin = Math.round(totalGap / (feedEvents.length - 1));
+    }
+    return { bottleSizeAvg, avgGapMin };
+  },
+});
+
+export const getEventsForRange = query({
+  args: {
+    babyId: v.id("babyProfiles"),
+    from: v.string(),
+    to: v.string(),
+    types: v.optional(v.array(v.string())),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    let events = await ctx.db
+      .query("events")
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId).gte("timestamp", args.from).lte("timestamp", args.to)
+      )
+      .collect();
+
+    if (args.types && args.types.length > 0) {
+      const flat = new Set(
+        args.types.flatMap((t) => TRENDS_EVENT_TYPE_GROUPS[t] ?? [t])
+      );
+      if (flat.size > 0) {
+        events = events.filter((e) => flat.has(e.type));
+      }
+    }
+
+    const limit = args.limit ?? 3000;
+    return events.slice(0, limit);
   },
 });
 
