@@ -137,7 +137,7 @@ function Dropdown({
       })}
       <div className="border-t border-muted/10 mt-1 pt-1">
         <Link
-          href="/settings"
+          href="/add-baby"
           onClick={onClose}
           className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-oat/50 transition-colors text-sm text-muted"
         >

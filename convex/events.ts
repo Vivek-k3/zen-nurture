@@ -555,7 +555,7 @@ export const getRangeAggregates = query({
             blowoutCount: 0,
             rashCount: 0,
           },
-          sleeps: { totalMin: 0 },
+          sleeps: { totalMin: 0, sessions: 0 },
           meds: { taken: 0, skipped: 0 },
         };
       }
@@ -589,6 +589,7 @@ export const getRangeAggregates = query({
         const start = new Date(payload.startTs).getTime();
         const end = new Date(payload.endTs).getTime();
         dailyData[date].sleeps.totalMin += Math.floor((end - start) / 60000);
+        dailyData[date].sleeps.sessions++;
       } else if (e.type === "MED_DOSE" && matchMeds(e)) {
         if (payload?.outcome === "taken") dailyData[date].meds.taken++;
         else if (payload?.outcome === "skipped") dailyData[date].meds.skipped++;

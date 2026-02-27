@@ -7,17 +7,16 @@ import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/co
 import { formatTime, formatDate, isToday, isYesterday } from "@/lib/time";
 import EventPhotos from "@/components/EventPhotos";
 import { DataState } from "@/components/DataState";
+import { useBaby } from "@/components/BabyContext";
 
 type TypeFilter = "all" | string;
 
 export default function RecordsPage() {
   const [mounted, setMounted] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
 
   useEffect(() => { setMounted(true); }, []);
-
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
-  const babyId = babyProfile?._id;
 
   const events = useQuery(
     api.events.listTimeline,

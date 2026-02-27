@@ -37,9 +37,17 @@ export async function POST(req: Request) {
 
   const { thisWeek, lastWeek } = comparison;
 
+  const genderHint =
+    profile?.gender === "baby-boy"
+      ? "Use he/him when referring to the baby."
+      : profile?.gender === "baby-girl"
+        ? "Use she/her when referring to the baby."
+        : "Use they/them or the baby's name when referring to the baby.";
+
   const prompt = [
     `You are Mora, the AI copilot in Zen Nurture, a baby care tracker.`,
     `Generate a warm, concise weekly digest for ${profile?.name || "baby"}.`,
+    `${genderHint}`,
     ``,
     `## This Week (${thisWeek.from} to ${thisWeek.to})`,
     `- Feeds: ${thisWeek.feeds.count} (${thisWeek.feeds.totalMl}ml total, ${thisWeek.feeds.perDay}/day)`,

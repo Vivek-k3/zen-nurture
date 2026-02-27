@@ -5,6 +5,13 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatTime, formatTimeSince, isToday } from "@/lib/time";
 import { DataState } from "@/components/DataState";
+import {
+  AppSelectTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 
 function TimePickerList({
   times,
@@ -352,17 +359,17 @@ export default function RemindersPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-2">
                 <label htmlFor="reminder-category" className="text-xs font-bold text-muted uppercase tracking-wider">Category</label>
-                <select
-                  id="reminder-category"
-                  value={newReminder.category}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                >
-                  <option value="feed">Feeding</option>
-                  <option value="diaper">Diaper</option>
-                  <option value="medicine">Medicine</option>
-                  <option value="custom">Custom</option>
-                </select>
+                <Select value={newReminder.category} onValueChange={handleCategoryChange}>
+                  <AppSelectTrigger id="reminder-category" className="bg-white p-4">
+                    <SelectValue />
+                  </AppSelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="feed">Feeding</SelectItem>
+                    <SelectItem value="diaper">Diaper</SelectItem>
+                    <SelectItem value="medicine">Medicine</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -378,15 +385,18 @@ export default function RemindersPage() {
 
               <div className="space-y-2">
                 <label htmlFor="reminder-trigger-type" className="text-xs font-bold text-muted uppercase tracking-wider">Trigger Type</label>
-                <select
-                  id="reminder-trigger-type"
+                <Select
                   value={newReminder.triggerType}
-                  onChange={(e) => setNewReminder({ ...newReminder, triggerType: e.target.value })}
-                  className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
+                  onValueChange={(v) => setNewReminder({ ...newReminder, triggerType: v })}
                 >
-                  <option value="fixedTimes">Fixed Times</option>
-                  <option value="afterLastEventType">After Last Event</option>
-                </select>
+                  <AppSelectTrigger id="reminder-trigger-type" className="bg-white p-4">
+                    <SelectValue />
+                  </AppSelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixedTimes">Fixed Times</SelectItem>
+                    <SelectItem value="afterLastEventType">After Last Event</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {newReminder.triggerType === "fixedTimes" && (

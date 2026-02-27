@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useMemo } from "react";
+import { useState, useEffect, useTransition, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -10,15 +10,35 @@ const TrendsCharts = dynamic(
   () => import("@/components/TrendsCharts"),
   { ssr: false }
 );
+const TrendsCalendar = dynamic(
+  () => import("@/components/TrendsCalendar"),
+  { ssr: false }
+);
 import WeeklyDigestCard from "@/components/WeeklyDigestCard";
 import type { Gender } from "@/lib/who-percentiles";
 import { useBaby } from "@/components/BabyContext";
 import { DataState } from "@/components/DataState";
+import {
+  AppSelectTriggerCompact,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 
-type TrendsTab = "24h" | "7d" | "14d" | "30d" | "growth";
+type TrendsTab = "24h" | "7d" | "14d" | "30d" | "growth" | "calendar";
 type DiaperKindFilter = "all" | "wet" | "dirty" | "dry" | "mixed";
 type DiaperTextureFilter = "all" | "runny" | "mucousy" | "mushy" | "solid" | "pebbles";
 type DiaperColorFilter = "all" | "black" | "green" | "yellow" | "brown" | "red" | "gray";
+
+function FilterChip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] font-medium text-muted uppercase tracking-wide shrink-0">{label}</span>
+      {children}
+    </div>
+  );
+}
 
 export default function TrendsPage() {
   const [timeRange, setTimeRange] = useState<TrendsTab>("24h");
@@ -83,7 +103,7 @@ export default function TrendsPage() {
 
   const rangeAggregatesArgs = useMemo(
     () =>
-      babyId && timeRange !== "24h" && timeRange !== "growth"
+      babyId && timeRange !== "24h" && timeRange !== "growth" && timeRange !== "calendar"
         ? {
             babyId,
             from: rangeStartISO,
@@ -170,42 +190,35 @@ export default function TrendsPage() {
 
   const filteredWeekDiapers = (weekDiapers || []).filter(matchesDiaperFilters);
 
-  const weeklyStats = (() => {
-    if (!weekAggregates) return null;
+  const rangeStats = (() => {
+    const agg = timeRange === "24h" ? null : rangeAggregates;
+    if (!agg || Object.keys(agg).length === 0) return null;
 
     let totalFeeds = 0;
     let totalMl = 0;
+    let totalDiapers = 0;
     let totalSleepMin = 0;
+    let totalSleepSessions = 0;
     let daysWithData = 0;
 
-    Object.values(weekAggregates).forEach((data: any) => {
-      if (data.feeds?.count > 0 || data.diapers?.count > 0) {
-        daysWithData++;
-      }
+    Object.values(agg).forEach((data: any) => {
+      const hasData = (data.feeds?.count ?? 0) > 0 || (data.diapers?.count ?? 0) > 0 || (data.sleeps?.totalMin ?? 0) > 0;
+      if (hasData) daysWithData++;
       totalFeeds += data.feeds?.count || 0;
       totalMl += data.feeds?.totalMl || 0;
+      totalDiapers += data.diapers?.count || 0;
       totalSleepMin += data.sleeps?.totalMin || 0;
+      totalSleepSessions += data.sleeps?.sessions || 0;
     });
 
-    const filteredCountsByDate: Record<string, number> = {};
-    filteredWeekDiapers.forEach((event: any) => {
-      const date = event.timestamp.split("T")[0];
-      filteredCountsByDate[date] = (filteredCountsByDate[date] || 0) + 1;
-    });
-    const totalFilteredDiapers = Object.values(filteredCountsByDate).reduce((sum, count) => sum + count, 0);
+    const numDays = Math.max(daysWithData, 1);
 
     return {
-      avgFeeds: daysWithData > 0 ? Math.round(totalFeeds / daysWithData) : 0,
-      avgMl: daysWithData > 0 ? Math.round(totalMl / daysWithData) : 0,
-      avgDiapersFiltered: daysWithData > 0 ? Math.round(totalFilteredDiapers / daysWithData) : 0,
-      avgDiapersUnfiltered:
-        daysWithData > 0
-          ? Math.round(
-              Object.values(weekAggregates).reduce((sum: number, data: any) => sum + (data.diapers?.count || 0), 0) /
-                daysWithData
-            )
-          : 0,
-      totalSleep: Math.round(totalSleepMin / 60),
+      avgFeeds: Math.round(totalFeeds / numDays),
+      avgMl: Math.round(totalMl / numDays),
+      avgDiapers: Math.round(totalDiapers / numDays),
+      avgSleepSessions: Math.round((totalSleepSessions / numDays) * 10) / 10,
+      avgSleepMin: Math.round(totalSleepMin / numDays),
     };
   })();
 
@@ -225,6 +238,7 @@ export default function TrendsPage() {
             { key: "7d", label: "7d" },
             { key: "14d", label: "14d" },
             { key: "30d", label: "30d" },
+            { key: "calendar", label: "Calendar" },
             { key: "growth", label: "Growth" },
           ] as const).map(({ key, label }) => (
             <button
@@ -252,111 +266,161 @@ export default function TrendsPage() {
           {/* Weekly Digest */}
           <WeeklyDigestCard babyId={babyId} />
 
-          {timeRange !== "growth" && <div className="bg-white rounded-[20px] p-4 shadow-sm border border-muted/10">
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-xs font-bold text-muted uppercase tracking-wider mr-2">Diaper Filters</span>
-              {(["all", "wet", "dirty", "dry"] as const).map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() => setDiaperKindFilter(kind)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    diaperKindFilter === kind ? "bg-sage text-white" : "bg-oat text-muted"
-                  }`}
-                >
-                  {kind}
-                </button>
-              ))}
-              {(["all", "runny", "mucousy", "mushy", "solid", "pebbles"] as const).map((texture) => (
-                <button
-                  key={texture}
-                  type="button"
-                  onClick={() => setDiaperTextureFilter(texture)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    diaperTextureFilter === texture ? "bg-night text-white" : "bg-oat text-muted"
-                  }`}
-                >
-                  {texture}
-                </button>
-              ))}
-              {(["all", "black", "green", "yellow", "brown", "red", "gray"] as const).map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setDiaperColorFilter(color)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    diaperColorFilter === color ? "bg-clay text-white" : "bg-oat text-muted"
-                  }`}
-                >
-                  {color}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setBlowoutOnly((prev) => !prev)}
-                className={`px-3 py-1 rounded-full text-xs font-bold ${blowoutOnly ? "bg-alert-red text-white" : "bg-oat text-muted"}`}
-              >
-                Blowout
-              </button>
-              <button
-                type="button"
-                onClick={() => setRashOnly((prev) => !prev)}
-                className={`px-3 py-1 rounded-full text-xs font-bold ${rashOnly ? "bg-alert-red text-white" : "bg-oat text-muted"}`}
-              >
-                Rash
-              </button>
-            </div>
-            {/* Formula / Feed / Medicine filters - show when user has multiple */}
-            {((formulasUsed?.length ?? 0) > 1 || (medicinesUsed?.length ?? 0) > 1) && (
-              <div className="flex flex-wrap gap-2 items-center mt-3 pt-3 border-t border-muted/20">
-                {(formulasUsed?.length ?? 0) > 1 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-xs font-bold text-muted uppercase tracking-wider">Formula</span>
-                    <select
-                      value={formulaFilter}
-                      onChange={(e) => setFormulaFilter(e.target.value)}
-                      className="text-xs font-bold rounded-lg border border-muted/30 bg-oat px-3 py-1.5 text-espresso"
-                    >
-                      <option value="all">All</option>
-                      {formulasUsed?.map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Feed type</span>
-                  <select
-                    value={feedContentFilter}
-                    onChange={(e) => setFeedContentFilter(e.target.value)}
-                    className="text-xs font-bold rounded-lg border border-muted/30 bg-oat px-3 py-1.5 text-espresso"
-                  >
-                    <option value="all">All</option>
-                    <option value="formula">Formula</option>
-                    <option value="breast_milk">Breast milk</option>
-                    <option value="cow_milk">Cow milk</option>
-                  </select>
+          {/* Avg stats cards for 7d/14d/30d */}
+          {rangeStats && (timeRange === "7d" || timeRange === "14d" || timeRange === "30d") && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-sage" />
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Feeds</span>
                 </div>
+                <div className="text-2xl font-bold text-espresso">{rangeStats.avgFeeds}</div>
+                <div className="text-xs text-muted mt-0.5">sessions per day</div>
+              </div>
+              <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-sage" />
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Feed Amount</span>
+                </div>
+                <div className="text-2xl font-bold text-espresso">{rangeStats.avgMl}ml</div>
+                <div className="text-xs text-muted mt-0.5">per day</div>
+              </div>
+              <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-clay" />
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Diapers</span>
+                </div>
+                <div className="text-2xl font-bold text-espresso">{rangeStats.avgDiapers}</div>
+                <div className="text-xs text-muted mt-0.5">per day</div>
+              </div>
+              <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-night" />
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider">Avg Sleep</span>
+                </div>
+                <div className="text-2xl font-bold text-espresso">{formatDuration(rangeStats.avgSleepMin)}</div>
+                <div className="text-xs text-muted mt-0.5">{rangeStats.avgSleepSessions} sessions/day</div>
+              </div>
+            </div>
+          )}
+
+          {timeRange !== "growth" && timeRange !== "calendar" && (
+            <div className="bg-white rounded-[20px] px-3 py-2.5 shadow-sm border border-muted/10">
+              <div className="flex flex-wrap gap-x-2 gap-y-2 items-center">
+                <FilterChip label="Kind">
+                  <Select value={diaperKindFilter} onValueChange={(v) => setDiaperKindFilter(v as DiaperKindFilter)}>
+                    <AppSelectTriggerCompact className="w-[4.5rem] min-w-0 py-1 px-2 text-[11px]">
+                      <SelectValue />
+                    </AppSelectTriggerCompact>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="wet">Wet</SelectItem>
+                      <SelectItem value="dirty">Dirty</SelectItem>
+                      <SelectItem value="dry">Dry</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterChip>
+                <FilterChip label="Texture">
+                  <Select value={diaperTextureFilter} onValueChange={(v) => setDiaperTextureFilter(v as DiaperTextureFilter)}>
+                    <AppSelectTriggerCompact className="w-[4.5rem] min-w-0 py-1 px-2 text-[11px]">
+                      <SelectValue />
+                    </AppSelectTriggerCompact>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="runny">Runny</SelectItem>
+                      <SelectItem value="mucousy">Mucousy</SelectItem>
+                      <SelectItem value="mushy">Mushy</SelectItem>
+                      <SelectItem value="solid">Solid</SelectItem>
+                      <SelectItem value="pebbles">Pebbles</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterChip>
+                <FilterChip label="Color">
+                  <Select value={diaperColorFilter} onValueChange={(v) => setDiaperColorFilter(v as DiaperColorFilter)}>
+                    <AppSelectTriggerCompact className="w-[4.5rem] min-w-0 py-1 px-2 text-[11px]">
+                      <SelectValue />
+                    </AppSelectTriggerCompact>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="black">Black</SelectItem>
+                      <SelectItem value="green">Green</SelectItem>
+                      <SelectItem value="yellow">Yellow</SelectItem>
+                      <SelectItem value="brown">Brown</SelectItem>
+                      <SelectItem value="red">Red</SelectItem>
+                      <SelectItem value="gray">Gray</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterChip>
+                <span className="w-px h-4 bg-muted/20 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => setBlowoutOnly((prev) => !prev)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${blowoutOnly ? "bg-alert-red/15 text-alert-red" : "text-muted hover:text-espresso"}`}
+                >
+                  Blowout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRashOnly((prev) => !prev)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${rashOnly ? "bg-alert-red/15 text-alert-red" : "text-muted hover:text-espresso"}`}
+                >
+                  Rash
+                </button>
+                <span className="w-px h-4 bg-muted/20 shrink-0" />
+                <FilterChip label="Feed">
+                  <Select value={feedContentFilter} onValueChange={setFeedContentFilter}>
+                    <AppSelectTriggerCompact className="w-[5rem] min-w-0 py-1 px-2 text-[11px]">
+                      <SelectValue />
+                    </AppSelectTriggerCompact>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="formula">Formula</SelectItem>
+                      <SelectItem value="breast_milk">Breast milk</SelectItem>
+                      <SelectItem value="cow_milk">Cow milk</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterChip>
+                {(formulasUsed?.length ?? 0) > 1 && (
+                  <FilterChip label="Formula">
+                    <Select value={formulaFilter} onValueChange={setFormulaFilter}>
+                      <AppSelectTriggerCompact className="w-[5rem] min-w-0 py-1 px-2 text-[11px] max-w-[7rem]">
+                        <SelectValue />
+                      </AppSelectTriggerCompact>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {formulasUsed?.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FilterChip>
+                )}
                 {(medicinesUsed?.length ?? 0) > 1 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-xs font-bold text-muted uppercase tracking-wider">Medicine</span>
-                    <select
-                      value={medicineFilter}
-                      onChange={(e) => setMedicineFilter(e.target.value)}
-                      className="text-xs font-bold rounded-lg border border-muted/30 bg-oat px-3 py-1.5 text-espresso"
-                    >
-                      <option value="all">All</option>
-                      {medicinesUsed?.map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <FilterChip label="Medicine">
+                    <Select value={medicineFilter} onValueChange={setMedicineFilter}>
+                      <AppSelectTriggerCompact className="w-[5rem] min-w-0 py-1 px-2 text-[11px] max-w-[7rem]">
+                        <SelectValue />
+                      </AppSelectTriggerCompact>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {medicinesUsed?.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FilterChip>
                 )}
               </div>
-            )}
-          </div>}
+            </div>
+          )}
 
-          {timeRange === "24h" ? (
+          {timeRange === "calendar" ? (
+            <TrendsCalendar
+              babyId={babyId}
+              aggFilters={aggFilters}
+            />
+          ) : timeRange === "24h" ? (
             <DataState
               value={todayAggregates}
               loadingFallback={

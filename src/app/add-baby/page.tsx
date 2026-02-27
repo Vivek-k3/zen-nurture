@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { useGenderThemeType } from "@/components/GenderTheme";
+import Link from "next/link";
 import {
   AppSelectTrigger,
   Select,
@@ -16,12 +17,16 @@ import {
 
 type Step = "family" | "baby";
 
-export default function OnboardingPage() {
+export default function AddBabyPage() {
   const router = useRouter();
+  const families = useQuery(api.families.listMyFamilies, {});
+  const currentFamily = families?.[0];
+  const familyId = currentFamily?._id;
+
   const [step, setStep] = useState<Step>("family");
   const [familyName, setFamilyName] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
-  const [familyId, setFamilyId] = useState<string | null>(null);
+  const [resolvedFamilyId, setResolvedFamilyId] = useState<string | null>(null);
 
   const [babyName, setBabyName] = useState("");
   const [babyDob, setBabyDob] = useState("");
@@ -35,6 +40,13 @@ export default function OnboardingPage() {
 
   const createFamily = useMutation(api.families.createFamily);
   const createBabyProfile = useMutation(api.events.createBabyProfile);
+
+  useEffect(() => {
+    if (familyId) {
+      setResolvedFamilyId(familyId);
+      setStep("baby");
+    }
+  }, [familyId]);
 
   const rollFamilyName = () => {
     setDiceSpinning(true);
@@ -57,30 +69,31 @@ export default function OnboardingPage() {
     setError("");
     try {
       const id = await createFamily({ name: familyName.trim() });
-      setFamilyId(id);
+      setResolvedFamilyId(id);
       setStep("baby");
-    } catch (err: any) {
-      setError(err.message ?? "Failed to create family");
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message ?? "Failed to create family");
     } finally {
       setLoading(false);
     }
   };
 
   const handleFinish = async () => {
-    if (!familyId || !babyName.trim() || !babyDob) return;
+    const fid = resolvedFamilyId ?? familyId;
+    if (!fid || !babyName.trim() || !babyDob) return;
     setLoading(true);
     setError("");
     try {
       await createBabyProfile({
-        familyId: familyId as any,
+        familyId: fid,
         name: babyName.trim(),
         dob: babyDob,
         gender: babyGender || undefined,
         timezone: babyTimezone,
       });
       router.push("/");
-    } catch (err: any) {
-      setError(err.message ?? "Failed to create baby profile");
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message ?? "Failed to create baby profile");
     } finally {
       setLoading(false);
     }
@@ -100,24 +113,43 @@ export default function OnboardingPage() {
   };
   const themeBgClass = getThemeBgClass();
 
+  const effectiveFamilyId = resolvedFamilyId ?? familyId;
+  const showFamilyStep = step === "family" || !effectiveFamilyId;
+
+  if (families === undefined) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="animate-pulse text-muted">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-oat px-4">
+    <div className="min-h-[60vh] flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-lg">
-        {/* Progress dots */}
-        <div className="flex justify-center gap-2 mb-8">
-          <div className={`h-2 rounded-full transition-all duration-300 ${step === "family" ? getThemeBgClass() : getThemeBgClass() + "/50"}`} style={{ width: step === "family" ? "2rem" : "0.5rem" }} />
-          <div className={`h-2 rounded-full transition-all duration-300 ${step === "baby" ? getThemeBgClass() : "bg-muted/30"}`} style={{ width: step === "baby" ? "2rem" : "0.5rem" }} />
-        </div>
+        {/* Progress dots - only when both steps possible */}
+        {!familyId && (
+          <div className="flex justify-center gap-2 mb-8">
+            <div
+              className={`h-2 rounded-full transition-all duration-300 ${showFamilyStep ? themeBgClass : themeBgClass + "/50"}`}
+              style={{ width: showFamilyStep ? "2rem" : "0.5rem" }}
+            />
+            <div
+              className={`h-2 rounded-full transition-all duration-300 ${!showFamilyStep ? themeBgClass : "bg-muted/30"}`}
+              style={{ width: !showFamilyStep ? "2rem" : "0.5rem" }}
+            />
+          </div>
+        )}
 
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-serif font-bold text-espresso">Zen Nurture</h1>
+          <h1 className="text-2xl font-serif font-bold text-espresso">Add Baby</h1>
           <p className="text-muted mt-2">
-            {step === "family" ? "Let\u2019s set up your family" : "Tell us about your little one"}
+            {showFamilyStep ? "Create a family first" : "Tell us about your little one"}
           </p>
         </div>
 
-        {/* Step 1 — Family */}
-        {step === "family" && (
+        {/* Step 1 — Family (only if no family yet) */}
+        {showFamilyStep && (
           <div className="bg-white rounded-[20px] p-8 shadow-sm border border-muted/10">
             <div className="text-center mb-6">
               <span className={`material-symbols-outlined text-5xl ${themeTextClass}`}>family_restroom</span>
@@ -168,21 +200,21 @@ export default function OnboardingPage() {
         )}
 
         {/* Step 2 — Baby */}
-        {step === "baby" && (
+        {!showFamilyStep && (
           <div className="bg-white rounded-[20px] p-8 shadow-sm border border-muted/10">
             <div className="text-center mb-6">
               <span className={`material-symbols-outlined text-5xl ${themeTextClass}`}>child_friendly</span>
               <h2 className="text-xl font-bold text-espresso mt-3">Add Your Baby</h2>
-              <p className="text-muted text-sm mt-1">You can add more babies later in Settings.</p>
+              <p className="text-muted text-sm mt-1">You can add more babies later from the sidebar.</p>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="ob-baby-name" className="text-xs font-bold text-muted uppercase tracking-wider">
+                <label htmlFor="add-baby-name" className="text-xs font-bold text-muted uppercase tracking-wider">
                   Baby&apos;s Name
                 </label>
                 <input
-                  id="ob-baby-name"
+                  id="add-baby-name"
                   type="text"
                   value={babyName}
                   onChange={(e) => setBabyName(e.target.value)}
@@ -194,11 +226,11 @@ export default function OnboardingPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label htmlFor="ob-baby-dob" className="text-xs font-bold text-muted uppercase tracking-wider">
+                  <label htmlFor="add-baby-dob" className="text-xs font-bold text-muted uppercase tracking-wider">
                     Date of Birth
                   </label>
                   <input
-                    id="ob-baby-dob"
+                    id="add-baby-dob"
                     type="date"
                     value={babyDob}
                     onChange={(e) => setBabyDob(e.target.value)}
@@ -206,37 +238,37 @@ export default function OnboardingPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="ob-baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">
+                  <label htmlFor="add-baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">
                     Gender
                   </label>
-                <Select value={babyGender} onValueChange={setBabyGender}>
-                  <AppSelectTrigger id="ob-baby-gender">
-                    <SelectValue placeholder="Not specified" />
-                  </AppSelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Not specified</SelectItem>
-                    <SelectItem value="baby-boy">Baby Boy</SelectItem>
-                    <SelectItem value="baby-girl">Baby Girl</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Select value={babyGender} onValueChange={setBabyGender}>
+                    <AppSelectTrigger id="add-baby-gender">
+                      <SelectValue placeholder="Not specified" />
+                    </AppSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Not specified</SelectItem>
+                      <SelectItem value="baby-boy">Baby Boy</SelectItem>
+                      <SelectItem value="baby-girl">Baby Girl</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="ob-baby-tz" className="text-xs font-bold text-muted uppercase tracking-wider">
+                <label htmlFor="add-baby-tz" className="text-xs font-bold text-muted uppercase tracking-wider">
                   Timezone
                 </label>
-              <Select value={babyTimezone} onValueChange={setBabyTimezone}>
-                <AppSelectTrigger id="ob-baby-tz">
-                  <SelectValue />
-                </AppSelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
-                  <SelectItem value="UTC">UTC</SelectItem>
-                  <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
-                  <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
-                </SelectContent>
-              </Select>
+                <Select value={babyTimezone} onValueChange={setBabyTimezone}>
+                  <AppSelectTrigger id="add-baby-tz">
+                    <SelectValue />
+                  </AppSelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
+                    <SelectItem value="UTC">UTC</SelectItem>
+                    <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
+                    <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {error && (
@@ -246,20 +278,32 @@ export default function OnboardingPage() {
               )}
 
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => { setStep("family"); setError(""); }}
-                  className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
-                >
-                  Back
-                </button>
+                {!familyId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep("family");
+                      setError("");
+                    }}
+                    className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
+                  >
+                    Back
+                  </button>
+                ) : (
+                  <Link
+                    href="/"
+                    className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5 text-center"
+                  >
+                    Cancel
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={handleFinish}
                   disabled={loading || !babyName.trim() || !babyDob}
                   className="flex-1 py-3 rounded-xl bg-espresso text-oat font-bold hover:bg-espresso/90 transition-colors disabled:opacity-50"
                 >
-                  {loading ? "Setting up..." : "Let\u2019s Go!"}
+                  {loading ? "Adding..." : "Add Baby"}
                 </button>
               </div>
             </div>

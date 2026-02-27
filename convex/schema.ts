@@ -125,6 +125,9 @@ export default defineSchema({
     category: v.string(),
     achievedAt: v.optional(v.string()),
     note: v.optional(v.string()),
+    photoIds: v.optional(v.array(v.string())),
+    videoIds: v.optional(v.array(v.string())),
+    isCustom: v.optional(v.boolean()),
     createdAt: v.string(),
   })
     .index("by_babyId", ["babyId"])

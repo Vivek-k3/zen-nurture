@@ -1,12 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { CAREGIVER_COLORS } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { Switch } from "@/components/ui/switch";
+import {
+  AppSelectTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useTheme } from "@/components/ThemeContext";
 
@@ -408,13 +416,18 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-espresso">Baby Profile</h2>
             {!isEditing && babyProfile && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="text-sage font-medium hover:underline"
-              >
-                Edit
-              </button>
+              <div className="flex items-center gap-3">
+                <Link href="/add-baby" className="text-sage font-medium hover:underline">
+                  Add another baby
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="text-sage font-medium hover:underline"
+                >
+                  Edit
+                </button>
+              </div>
             )}
           </div>
 
@@ -448,31 +461,37 @@ export default function SettingsPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label htmlFor="baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
-                  <select
-                    id="baby-gender"
+                  <Select
                     value={babyForm.gender}
-                    onChange={(e) => setBabyForm({ ...babyForm, gender: e.target.value })}
+                    onValueChange={(v) => setBabyForm({ ...babyForm, gender: v })}
                     disabled={!isEditing}
-                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
                   >
-                    <option value="">Not specified</option>
-                    <option value="baby-boy">Baby Boy</option>
-                    <option value="baby-girl">Baby Girl</option>
-                  </select>
+                    <AppSelectTrigger id="baby-gender">
+                      <SelectValue placeholder="Not specified" />
+                    </AppSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Not specified</SelectItem>
+                      <SelectItem value="baby-boy">Baby Boy</SelectItem>
+                      <SelectItem value="baby-girl">Baby Girl</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="baby-timezone" className="text-xs font-bold text-muted uppercase tracking-wider">Timezone</label>
-                  <select
-                    id="baby-timezone"
+                  <Select
                     value={babyForm.timezone}
-                    onChange={(e) => setBabyForm({ ...babyForm, timezone: e.target.value })}
+                    onValueChange={(v) => setBabyForm({ ...babyForm, timezone: v })}
                     disabled={!isEditing}
-                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
                   >
-                    <option value="Asia/Kolkata">Asia/Kolkata</option>
-                    <option value="Asia/Mumbai">Asia/Mumbai</option>
-                    <option value="UTC">UTC</option>
-                  </select>
+                    <AppSelectTrigger id="baby-timezone">
+                      <SelectValue />
+                    </AppSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Asia/Kolkata">Asia/Kolkata</SelectItem>
+                      <SelectItem value="Asia/Mumbai">Asia/Mumbai</SelectItem>
+                      <SelectItem value="UTC">UTC</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -481,42 +500,51 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label htmlFor="baby-volume-unit" className="text-xs text-muted">Volume</label>
-                    <select
-                      id="baby-volume-unit"
+                    <Select
                       value={babyForm.volumeUnit}
-                      onChange={(e) => setBabyForm({ ...babyForm, volumeUnit: e.target.value })}
+                      onValueChange={(v) => setBabyForm({ ...babyForm, volumeUnit: v })}
                       disabled={!isEditing}
-                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
                     >
-                      <option value="ml">ml</option>
-                      <option value="oz">oz</option>
-                    </select>
+                      <AppSelectTrigger id="baby-volume-unit">
+                        <SelectValue />
+                      </AppSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="oz">oz</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="baby-weight-unit" className="text-xs text-muted">Weight</label>
-                    <select
-                      id="baby-weight-unit"
+                    <Select
                       value={babyForm.weightUnit}
-                      onChange={(e) => setBabyForm({ ...babyForm, weightUnit: e.target.value })}
+                      onValueChange={(v) => setBabyForm({ ...babyForm, weightUnit: v })}
                       disabled={!isEditing}
-                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
                     >
-                      <option value="kg">kg</option>
-                      <option value="lb">lb</option>
-                    </select>
+                      <AppSelectTrigger id="baby-weight-unit">
+                        <SelectValue />
+                      </AppSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="lb">lb</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="baby-length-unit" className="text-xs text-muted">Length</label>
-                    <select
-                      id="baby-length-unit"
+                    <Select
                       value={babyForm.lengthUnit}
-                      onChange={(e) => setBabyForm({ ...babyForm, lengthUnit: e.target.value })}
+                      onValueChange={(v) => setBabyForm({ ...babyForm, lengthUnit: v })}
                       disabled={!isEditing}
-                      className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso disabled:opacity-60"
                     >
-                      <option value="cm">cm</option>
-                      <option value="in">in</option>
-                    </select>
+                      <AppSelectTrigger id="baby-length-unit">
+                        <SelectValue />
+                      </AppSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cm">cm</SelectItem>
+                        <SelectItem value="in">in</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -605,17 +633,24 @@ export default function SettingsPage() {
                 placeholder="Caregiver name"
                 className="flex-1 p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso"
               />
-              <select
+              <Select
                 value={caregiverForm.color}
-                onChange={(e) => setCaregiverForm({ ...caregiverForm, color: e.target.value })}
-                className="p-3 rounded-xl bg-oat/50 border border-muted/10"
+                onValueChange={(v) => setCaregiverForm({ ...caregiverForm, color: v })}
               >
-                {CAREGIVER_COLORS.map((color) => (
-                  <option key={color} value={color} style={{ backgroundColor: color }}>
-                    ●
-                  </option>
-                ))}
-              </select>
+                <AppSelectTrigger className="w-auto min-w-[4rem] shrink-0">
+                  <SelectValue />
+                </AppSelectTrigger>
+                <SelectContent>
+                  {CAREGIVER_COLORS.map((color) => (
+                    <SelectItem key={color} value={color}>
+                      <span
+                        className="inline-block h-4 w-4 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <button
                 type="button"
                 onClick={handleAddCaregiver}

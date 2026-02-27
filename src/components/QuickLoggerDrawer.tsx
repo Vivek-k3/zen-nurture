@@ -10,6 +10,13 @@ import FormulaPicker from "@/components/FormulaPicker";
 import MedicinePicker from "@/components/MedicinePicker";
 import DateTimeWheelPicker from "@/components/DateTimeWheelPicker";
 import { useBaby } from "@/components/BabyContext";
+import {
+  AppSelectTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type QuickLogPrefill = {
   view: "feed" | "diaper" | "sleep" | "meds";
@@ -548,16 +555,16 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                     <label htmlFor="contents" className="text-xs font-bold text-muted uppercase tracking-wider">
                       Contents
                     </label>
-                    <select
-                      id="contents"
-                      value={bottleContentType}
-                      onChange={(e) => setBottleContentType(e.target.value as BottleContentType)}
-                      className="w-full p-4 rounded-xl bg-white border border-muted/10 text-espresso font-medium focus:outline-none focus:ring-2 focus:ring-sage/20"
-                    >
-                      <option value="formula">Formula</option>
-                      <option value="breast_milk">Breast Milk (Pumped)</option>
-                      <option value="cow_milk">Cow Milk</option>
-                    </select>
+                    <Select value={bottleContentType} onValueChange={(v) => setBottleContentType(v as BottleContentType)}>
+                      <AppSelectTrigger id="contents" className="bg-white p-4">
+                        <SelectValue />
+                      </AppSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="formula">Formula</SelectItem>
+                        <SelectItem value="breast_milk">Breast Milk (Pumped)</SelectItem>
+                        <SelectItem value="cow_milk">Cow Milk</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {bottleContentType === "formula" && (
@@ -648,11 +655,17 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
               />
 
               <div className="flex items-center justify-center gap-4">
-                {(["wet", "dirty", "dry"] as const).map((kind) => (
+                {(["wet", "dirty", "dry", "mixed"] as const).map((kind) => (
                   <button
                     key={kind}
                     type="button"
-                    onClick={() => setDiaperKind(kind)}
+                    onClick={() => {
+                      setDiaperKind(kind);
+                      if (kind === "wet" || kind === "dry") {
+                        setDiaperTexture(undefined);
+                        setDiaperColor(undefined);
+                      }
+                    }}
                     aria-pressed={diaperKind === kind}
                     className={`h-24 w-24 rounded-full border-2 transition-all shadow-sm flex items-center justify-center text-2xl font-semibold capitalize ${
                       diaperKind === kind
@@ -665,45 +678,47 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 ))}
               </div>
 
-              <div className="bg-white rounded-2xl p-4 border border-muted/10 space-y-4">
-                <h4 className="text-xl font-serif text-espresso">Texture &amp; Color</h4>
+              {(diaperKind === "dirty" || diaperKind === "mixed") && (
+                <div className="bg-white rounded-2xl p-4 border border-muted/10 space-y-4">
+                  <h4 className="text-xl font-serif text-espresso">Texture &amp; Color</h4>
 
-                <div className="grid grid-cols-5 gap-3">
-                  {(["runny", "mucousy", "mushy", "solid", "pebbles"] as const).map((texture) => (
-                    <button
-                      key={texture}
-                      type="button"
-                      onClick={() => setDiaperTexture(texture)}
-                      aria-pressed={diaperTexture === texture}
-                      className={`rounded-xl p-2 border text-xs font-semibold capitalize transition-colors ${
-                        diaperTexture === texture
-                          ? "border-sage bg-sage/10 text-sage"
-                          : "border-muted/30 text-muted hover:border-sage/40"
-                      }`}
-                    >
-                      {texture}
-                    </button>
-                  ))}
-                </div>
+                  <div className="grid grid-cols-5 gap-3">
+                    {(["runny", "mucousy", "mushy", "solid", "pebbles"] as const).map((texture) => (
+                      <button
+                        key={texture}
+                        type="button"
+                        onClick={() => setDiaperTexture(texture)}
+                        aria-pressed={diaperTexture === texture}
+                        className={`rounded-xl p-2 border text-xs font-semibold capitalize transition-colors ${
+                          diaperTexture === texture
+                            ? "border-sage bg-sage/10 text-sage"
+                            : "border-muted/30 text-muted hover:border-sage/40"
+                        }`}
+                      >
+                        {texture}
+                      </button>
+                    ))}
+                  </div>
 
-                <div className="grid grid-cols-6 gap-3">
-                  {(["black", "green", "yellow", "brown", "red", "gray"] as const).map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setDiaperColor(color)}
-                      aria-pressed={diaperColor === color}
-                      className={`rounded-xl p-2 border text-xs font-semibold capitalize transition-colors ${
-                        diaperColor === color
-                          ? "border-sage bg-sage/10 text-sage"
-                          : "border-muted/30 text-muted hover:border-sage/40"
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  ))}
+                  <div className="grid grid-cols-6 gap-3">
+                    {(["black", "green", "yellow", "brown", "red", "gray"] as const).map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setDiaperColor(color)}
+                        aria-pressed={diaperColor === color}
+                        className={`rounded-xl p-2 border text-xs font-semibold capitalize transition-colors ${
+                          diaperColor === color
+                            ? "border-sage bg-sage/10 text-sage"
+                            : "border-muted/30 text-muted hover:border-sage/40"
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="bg-white rounded-2xl border border-muted/10 divide-y divide-muted/10">
                 <div className="px-4 py-3.5 flex items-center justify-between">
@@ -847,16 +862,17 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                         step={0.5}
                         className="w-24 p-3 rounded-xl bg-oat/50 text-espresso font-mono text-lg text-center focus:outline-none focus:ring-2 focus:ring-alert-red/20"
                       />
-                      <select
-                        value={medDoseUnit}
-                        onChange={(e) => setMedDoseUnit(e.target.value)}
-                        className="p-3 rounded-xl bg-oat/50 text-espresso font-medium focus:outline-none"
-                      >
-                        <option value="ml">ml</option>
-                        <option value="drops">drops</option>
-                        <option value="tablet">tablet</option>
-                        <option value="tsp">tsp</option>
-                      </select>
+                      <Select value={medDoseUnit} onValueChange={setMedDoseUnit}>
+                        <AppSelectTrigger className="w-auto min-w-[5rem]">
+                          <SelectValue />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ml">ml</SelectItem>
+                          <SelectItem value="drops">drops</SelectItem>
+                          <SelectItem value="tablet">tablet</SelectItem>
+                          <SelectItem value="tsp">tsp</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>

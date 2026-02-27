@@ -5,6 +5,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import MoraOrb from "@/components/MoraOrb";
 import { DataState } from "@/components/DataState";
+import DigestMarkdown from "@/components/DigestMarkdown";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface WeeklyDigestCardProps {
   babyId: any;
@@ -29,7 +31,7 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
 
   return (
     <DataState
-      value={digest ?? undefined}
+      value={digest}
       loadingFallback={
         <div className="bg-gradient-to-br from-sage/5 to-clay/5 rounded-[20px] p-5 border border-sage/15 animate-pulse">
           <div className="flex items-center gap-3 mb-3">
@@ -62,7 +64,9 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
         </div>
       }
     >
-      {(currentDigest) => (
+      {(currentDigest) => {
+        if (!currentDigest) return null;
+        return (
         <div className="bg-gradient-to-br from-sage/5 to-clay/5 rounded-[20px] p-5 border border-sage/15">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -97,26 +101,43 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
 
       {/* Stats row */}
       <div className="grid grid-cols-4 gap-2 mb-3">
-          <MiniStat label="Feeds" value={currentDigest.thisWeek?.feeds?.perDay} unit="/d" />
-          <MiniStat label="Diapers" value={currentDigest.thisWeek?.diapers?.perDay} unit="/d" />
-          <MiniStat label="Sleep" value={currentDigest.thisWeek?.sleep?.avgPerDay} unit="h/d" />
-          <MiniStat label="Meds" value={`${currentDigest.thisWeek?.meds?.adherence}%`} />
+        <Card className="border-sage/15 bg-white/60">
+          <CardContent className="p-3">
+            <MiniStat label="Feeds" value={currentDigest.thisWeek?.feeds?.perDay} unit="/d" />
+          </CardContent>
+        </Card>
+        <Card className="border-sage/15 bg-white/60">
+          <CardContent className="p-3">
+            <MiniStat label="Diapers" value={currentDigest.thisWeek?.diapers?.perDay} unit="/d" />
+          </CardContent>
+        </Card>
+        <Card className="border-sage/15 bg-white/60">
+          <CardContent className="p-3">
+            <MiniStat label="Sleep" value={currentDigest.thisWeek?.sleep?.avgPerDay} unit="h/d" />
+          </CardContent>
+        </Card>
+        <Card className="border-sage/15 bg-white/60">
+          <CardContent className="p-3">
+            <MiniStat label="Meds" value={`${currentDigest.thisWeek?.meds?.adherence}%`} />
+          </CardContent>
+        </Card>
       </div>
 
       {/* Expandable AI summary */}
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-sage/10">
-          <div className="prose-sm text-[13px] text-espresso leading-relaxed whitespace-pre-wrap">
-              {currentDigest.summary}
-          </div>
-        </div>
+        <Card className="mt-3 border-sage/10 bg-white/40">
+          <CardContent className="p-4 pt-3">
+            <DigestMarkdown content={currentDigest.summary} />
+          </CardContent>
+        </Card>
       )}
 
-          {!expanded && currentDigest.summary && (
-            <p className="text-[12px] text-muted line-clamp-2">{currentDigest.summary.slice(0, 120)}...</p>
+      {!expanded && currentDigest.summary && (
+        <p className="text-[12px] text-muted line-clamp-2 mt-2">{currentDigest.summary.slice(0, 120)}...</p>
       )}
     </div>
-      )}
+        );
+      }}
     </DataState>
   );
 }
