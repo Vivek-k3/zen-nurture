@@ -1,5 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import { requireAuth, requireBabyAccess, getUserFamilyIds } from "./lib/auth";
 
 const MORA_SETTINGS_KEY = "mora.config";
 const DEFAULT_ALLOWED_SCOPES = ["events", "reminders", "notes"] as const;
@@ -22,22 +24,38 @@ function defaultSettings(): MoraSettings {
   };
 }
 
-async function getSettingsDoc(ctx: any) {
+async function getSettingsDoc(
+  ctx: Parameters<typeof requireAuth>[0]
+) {
   const rows = await ctx.db
     .query("settings")
-    .withIndex("by_key", (q: any) => q.eq("key", MORA_SETTINGS_KEY))
+    .withIndex("by_key", (q) => q.eq("key", MORA_SETTINGS_KEY))
     .take(1);
   return rows[0] ?? null;
 }
 
-async function getResolvedSettings(ctx: any): Promise<MoraSettings> {
+async function getResolvedSettings(
+  ctx: Parameters<typeof requireAuth>[0]
+): Promise<MoraSettings> {
   const doc = await getSettingsDoc(ctx);
   return doc?.value ? { ...defaultSettings(), ...doc.value } : defaultSettings();
 }
 
-async function getLatestBabyProfileId(ctx: any) {
-  const rows = await ctx.db.query("babyProfiles").order("desc").take(1);
-  return rows[0]?._id ?? null;
+async function getLatestBabyProfileIdForUser(
+  ctx: Parameters<typeof getUserFamilyIds>[0],
+  userId: string
+): Promise<Id<"babyProfiles"> | null> {
+  const familyIds = await getUserFamilyIds(ctx, userId);
+  if (familyIds.length === 0) return null;
+  for (const familyId of familyIds) {
+    const rows = await ctx.db
+      .query("babyProfiles")
+      .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
+      .order("desc")
+      .take(1);
+    if (rows[0]) return rows[0]._id;
+  }
+  return null;
 }
 
 function inferScope(actionType: string): "events" | "reminders" | "notes" | "unknown" {
@@ -50,6 +68,7 @@ function inferScope(actionType: string): "events" | "reminders" | "notes" | "unk
 export const getMoraSettings = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await getResolvedSettings(ctx);
   },
 });
@@ -62,6 +81,7 @@ export const updateMoraSettings = mutation({
     allowedWriteScopes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const current = await getResolvedSettings(ctx);
     const next = {
       ...current,
@@ -83,7 +103,9 @@ export const getOrCreateMoraThread = mutation({
     babyId: v.optional(v.id("babyProfiles")),
   },
   handler: async (ctx, args) => {
-    const babyId = args.babyId ?? (await getLatestBabyProfileId(ctx)) ?? undefined;
+    const user = await requireAuth(ctx);
+    const babyId = args.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id)) ?? undefined;
+    if (babyId) await requireBabyAccess(ctx, babyId, user._id);
     const existing = babyId
       ? await ctx.db
           .query("moraThreads")
@@ -113,8 +135,10 @@ export const getOrCreateMoraThread = mutation({
 export const closeMoraThread = mutation({
   args: { threadId: v.id("moraThreads") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
     const thread = await ctx.db.get(args.threadId);
     if (!thread) return;
+    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
     await ctx.db.patch(args.threadId, { status: "closed" });
   },
 });
@@ -126,6 +150,10 @@ export const listMoraMessages = query({
     cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return { cursor: null, page: [] };
+    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
     const limit = Math.min(args.limit ?? 100, 500);
     const rows = await ctx.db
       .query("moraMessages")
@@ -144,10 +172,15 @@ export const listPendingMoraActions = query({
     threadId: v.id("moraThreads"),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return [];
+    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
     return await ctx.db
       .query("moraActions")
-      .withIndex("by_threadId_createdAt", (q) => q.eq("threadId", args.threadId))
-      .filter((q) => q.eq(q.field("status"), "pending"))
+      .withIndex("by_threadId_status_createdAt", (q) =>
+        q.eq("threadId", args.threadId).eq("status", "pending")
+      )
       .order("desc")
       .collect();
   },
@@ -167,6 +200,10 @@ export const createMoraMessage = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) throw new Error("Thread not found");
+    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
     const now = new Date().toISOString();
     const id = await ctx.db.insert("moraMessages", {
       ...args,
@@ -188,6 +225,10 @@ export const createPendingMoraAction = mutation({
     requiresApproval: v.boolean(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) throw new Error("Thread not found");
+    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
     const now = new Date().toISOString();
     const id = await ctx.db.insert("moraActions", {
       ...args,
@@ -200,11 +241,23 @@ export const createPendingMoraAction = mutation({
   },
 });
 
+async function verifyMoraActionAccess(
+  ctx: Parameters<typeof requireAuth>[0],
+  actionId: Id<"moraActions">
+) {
+  const user = await requireAuth(ctx);
+  const action = await ctx.db.get(actionId);
+  if (!action) throw new Error("Action not found");
+  const thread = await ctx.db.get(action.threadId);
+  if (!thread) throw new Error("Thread not found");
+  if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
+  return { user, action };
+}
+
 export const approveMoraAction = mutation({
   args: { actionId: v.id("moraActions") },
   handler: async (ctx, args) => {
-    const action = await ctx.db.get(args.actionId);
-    if (!action) throw new Error("Action not found");
+    const { action } = await verifyMoraActionAccess(ctx, args.actionId);
     if (action.status !== "pending") return action;
     const now = new Date().toISOString();
     await ctx.db.patch(args.actionId, { status: "approved", approvedAt: now });
@@ -218,6 +271,7 @@ export const rejectMoraAction = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await verifyMoraActionAccess(ctx, args.actionId);
     const action = await ctx.db.get(args.actionId);
     if (!action) throw new Error("Action not found");
     await ctx.db.patch(args.actionId, {
@@ -234,6 +288,7 @@ export const markMoraActionExecuted = mutation({
     result: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await verifyMoraActionAccess(ctx, args.actionId);
     const now = new Date().toISOString();
     await ctx.db.patch(args.actionId, {
       status: "executed",
@@ -251,6 +306,7 @@ export const markMoraActionFailed = mutation({
     error: v.string(),
   },
   handler: async (ctx, args) => {
+    await verifyMoraActionAccess(ctx, args.actionId);
     await ctx.db.patch(args.actionId, {
       status: "failed",
       error: args.error,
@@ -264,6 +320,7 @@ export const executeApprovedMoraAction = mutation({
     actionId: v.id("moraActions"),
   },
   handler: async (ctx, args) => {
+    const { user } = await verifyMoraActionAccess(ctx, args.actionId);
     const action = await ctx.db.get(args.actionId);
     if (!action) throw new Error("Action not found");
     if (!["approved", "pending"].includes(action.status)) {
@@ -285,7 +342,7 @@ export const executeApprovedMoraAction = mutation({
     let entityId: string | undefined;
 
     if (action.actionType === "event.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileId(ctx));
+      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
       if (!babyId) throw new Error("No baby profile available");
       entityId = await ctx.db.insert("events", {
         babyId,
@@ -297,7 +354,7 @@ export const executeApprovedMoraAction = mutation({
         createdAt: now,
       });
     } else if (action.actionType === "note.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileId(ctx));
+      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
       if (!babyId) throw new Error("No baby profile available");
       entityId = await ctx.db.insert("events", {
         babyId,
@@ -309,8 +366,9 @@ export const executeApprovedMoraAction = mutation({
       });
     } else if (action.actionType === "event.update") {
       if (!payload.id) throw new Error("event.update missing id");
-      const existing: any = await ctx.db.get(payload.id);
+      const existing = await ctx.db.get(payload.id as Id<"events">);
       if (!existing) throw new Error("Event not found");
+      await requireBabyAccess(ctx, existing.babyId, user._id);
       await ctx.db.patch(payload.id, {
         timestamp: payload.timestamp ?? existing.timestamp,
         caregiverId: payload.caregiverId ?? existing.caregiverId,
@@ -320,10 +378,13 @@ export const executeApprovedMoraAction = mutation({
       entityId = payload.id;
     } else if (action.actionType === "event.delete") {
       if (!payload.id) throw new Error("event.delete missing id");
-      await ctx.db.delete(payload.id);
+      const existing = await ctx.db.get(payload.id as Id<"events">);
+      if (!existing) throw new Error("Event not found");
+      await requireBabyAccess(ctx, existing.babyId, user._id);
+      await ctx.db.delete(payload.id as Id<"events">);
       entityId = payload.id;
     } else if (action.actionType === "reminder.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileId(ctx));
+      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
       if (!babyId) throw new Error("No baby profile available");
       entityId = await ctx.db.insert("reminderRules", {
         babyId,
@@ -339,12 +400,18 @@ export const executeApprovedMoraAction = mutation({
       });
     } else if (action.actionType === "reminder.update") {
       if (!payload.id) throw new Error("reminder.update missing id");
+      const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
+      if (!existing) throw new Error("Reminder not found");
+      await requireBabyAccess(ctx, existing.babyId, user._id);
       const { id, ...updates } = payload;
-      await ctx.db.patch(id as any, updates);
+      await ctx.db.patch(id as Id<"reminderRules">, updates);
       entityId = id;
     } else if (action.actionType === "reminder.delete") {
       if (!payload.id) throw new Error("reminder.delete missing id");
-      await ctx.db.delete(payload.id as any);
+      const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
+      if (!existing) throw new Error("Reminder not found");
+      await requireBabyAccess(ctx, existing.babyId, user._id);
+      await ctx.db.delete(payload.id as Id<"reminderRules">);
       entityId = payload.id;
     } else {
       throw new Error(`Unsupported action type: ${action.actionType}`);

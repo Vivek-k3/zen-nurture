@@ -1,5 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { authComponent } from "./auth";
+import { requireBabyAccess } from "./lib/auth";
 
 type Nudge = {
   type: string;
@@ -12,9 +14,15 @@ type Nudge = {
 };
 
 export const getActiveNudges = query({
-  args: { babyId: v.id("babyProfiles") },
+  args: {
+    babyId: v.id("babyProfiles"),
+    now: v.string(),
+  },
   handler: async (ctx, args) => {
-    const now = Date.now();
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const now = new Date(args.now).getTime();
     const nudges: Nudge[] = [];
 
     const typesToCheck = [

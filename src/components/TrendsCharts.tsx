@@ -39,6 +39,8 @@ export default function TrendsCharts({ rangeAggregates, days }: TrendsChartsProp
         diaperCount: agg?.diapers?.count ?? 0,
         diaperWet: agg?.diapers?.wet ?? 0,
         diaperDirty: agg?.diapers?.dirty ?? 0,
+        diaperDry: agg?.diapers?.dry ?? 0,
+        diaperMixed: agg?.diapers?.mixed ?? 0,
         sleepHours: Math.round(((agg?.sleeps?.totalMin ?? 0) / 60) * 10) / 10,
         medsTaken: agg?.meds?.taken ?? 0,
         medsSkipped: agg?.meds?.skipped ?? 0,
@@ -114,15 +116,23 @@ export default function TrendsCharts({ rangeAggregates, days }: TrendsChartsProp
             <YAxis tick={{ fontSize: 10, fill: "#6B6B6B" }} width={25} allowDecimals={false} />
             <Tooltip content={<DiaperTooltip />} />
             <Bar dataKey="diaperWet" stackId="diaper" fill="#6B8CAE" radius={[0, 0, 0, 0]} maxBarSize={32} name="Wet" />
-            <Bar dataKey="diaperDirty" stackId="diaper" fill="#C4A484" radius={[4, 4, 0, 0]} maxBarSize={32} name="Dirty" />
+            <Bar dataKey="diaperDirty" stackId="diaper" fill="#C4A484" radius={[0, 0, 0, 0]} maxBarSize={32} name="Dirty" />
+            <Bar dataKey="diaperDry" stackId="diaper" fill="#9CA3AF" radius={[0, 0, 0, 0]} maxBarSize={32} name="Dry" />
+            <Bar dataKey="diaperMixed" stackId="diaper" fill="#A78BFA" radius={[4, 4, 0, 0]} maxBarSize={32} name="Mixed" />
           </BarChart>
         </ResponsiveContainer>
-        <div className="flex items-center gap-4 mt-2 px-1">
+        <div className="flex flex-wrap items-center gap-3 mt-2 px-1">
           <span className="flex items-center gap-1 text-[10px] text-muted">
             <span className="inline-block h-2 w-2 rounded-sm bg-[#6B8CAE]" /> Wet
           </span>
           <span className="flex items-center gap-1 text-[10px] text-muted">
             <span className="inline-block h-2 w-2 rounded-sm bg-[#C4A484]" /> Dirty
+          </span>
+          <span className="flex items-center gap-1 text-[10px] text-muted">
+            <span className="inline-block h-2 w-2 rounded-sm bg-[#9CA3AF]" /> Dry
+          </span>
+          <span className="flex items-center gap-1 text-[10px] text-muted">
+            <span className="inline-block h-2 w-2 rounded-sm bg-[#A78BFA]" /> Mixed
           </span>
         </div>
       </ChartCard>
@@ -219,11 +229,16 @@ function ChartTooltip({ active, payload, label, unit, field, secondaryField, sec
 function DiaperTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
+  const parts = [];
+  if (row?.diaperWet) parts.push(`${row.diaperWet} wet`);
+  if (row?.diaperDirty) parts.push(`${row.diaperDirty} dirty`);
+  if (row?.diaperDry) parts.push(`${row.diaperDry} dry`);
+  if (row?.diaperMixed) parts.push(`${row.diaperMixed} mixed`);
   return (
     <div className="bg-white rounded-xl border border-muted/10 shadow-lg p-3 text-[11px]">
       <p className="font-bold text-espresso mb-1">{row?.date}</p>
       <p className="text-espresso">{row?.diaperCount} total</p>
-      <p className="text-muted">{row?.diaperWet} wet · {row?.diaperDirty} dirty</p>
+      {parts.length > 0 && <p className="text-muted">{parts.join(" · ")}</p>}
     </div>
   );
 }

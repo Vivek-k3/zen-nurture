@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n convex,next \"convex dev\" \"portless zen next dev\"",
+    "dev": "portless zen next dev",
+    "cdev": "concurrently -n convex,next \"convex dev\" \"portless zen next dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

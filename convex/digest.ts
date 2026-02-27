@@ -1,9 +1,14 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { authComponent } from "./auth";
+import { requireAuth, requireBabyAccess } from "./lib/auth";
 
 export const getWeeklyComparison = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const now = new Date();
     const dayOfWeek = now.getDay();
     const thisMonday = new Date(now);
@@ -111,6 +116,8 @@ export const saveDigest = mutation({
     summary: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const existing = await ctx.db
       .query("weeklyDigests")
       .withIndex("by_babyId_weekStart", (q) =>
@@ -133,6 +140,9 @@ export const saveDigest = mutation({
 export const listDigests = query({
   args: { babyId: v.id("babyProfiles"), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     return await ctx.db
       .query("weeklyDigests")
       .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
@@ -144,6 +154,9 @@ export const listDigests = query({
 export const getLatestDigest = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const digests = await ctx.db
       .query("weeklyDigests")
       .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))

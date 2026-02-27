@@ -1,11 +1,9 @@
 import webpush from "web-push";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../../../../convex/_generated/api";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY!;
+const CRON_SECRET = process.env.CRON_SECRET;
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL!;
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(`mailto:noreply@zennurture.app`, VAPID_PUBLIC, VAPID_PRIVATE);
@@ -13,6 +11,11 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 export async function POST(req: Request) {
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { userId, title, body: notifBody, url, tag } = body;
 
@@ -20,7 +23,20 @@ export async function POST(req: Request) {
       return Response.json({ error: "userId required" }, { status: 400 });
     }
 
-    const subscriptions = await convex.query(api.push.listByUser, { userId });
+    const res = await fetch(`${CONVEX_SITE_URL}/api/push/cron-subs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${CRON_SECRET}`,
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!res.ok) {
+      return Response.json({ error: "Failed to fetch subscriptions" }, { status: 502 });
+    }
+
+    const subscriptions = await res.json();
 
     if (subscriptions.length === 0) {
       return Response.json({ sent: 0, reason: "no subscriptions" });
@@ -43,16 +59,27 @@ export async function POST(req: Request) {
           payload
         );
         sent++;
-      } catch (err: any) {
+      } catch (err: unknown) {
         failed++;
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          await convex.mutation(api.push.unsubscribe, { endpoint: sub.endpoint });
+        const statusCode = (err as { statusCode?: number })?.statusCode;
+        if (statusCode === 404 || statusCode === 410) {
+          await fetch(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${CRON_SECRET}`,
+            },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
         }
       }
     }
 
     return Response.json({ sent, failed });
-  } catch (err: any) {
-    return Response.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 }
+    );
   }
 }

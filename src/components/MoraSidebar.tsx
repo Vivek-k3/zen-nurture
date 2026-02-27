@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -12,6 +13,7 @@ import { useTour } from "@/components/ui/tour";
 import MoraOrb from "@/components/MoraOrb";
 import MoraThread from "@/components/mora/MoraThread";
 import MoraToolUIs from "@/components/mora/MoraToolUIs";
+import { DataState } from "@/components/DataState";
 
 function MoraTourButton() {
   const { start } = useTour();
@@ -74,7 +76,7 @@ function MoraRuntimeProvider({
 
   useEffect(() => {
     let active = true;
-    setThreadId(null);
+    if (prevThreadRef.current) setThreadId(null);
     void (async () => {
       try {
         if (prevThreadRef.current) {
@@ -217,12 +219,12 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
               <p className="text-[13px] text-muted mb-4">
                 Enable Mora in Settings to use the AI assistant.
               </p>
-              <a
+              <Link
                 href="/settings"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-espresso text-oat text-[12px] font-semibold"
               >
                 Open Settings
-              </a>
+              </Link>
             </div>
           </div>
         ) : (

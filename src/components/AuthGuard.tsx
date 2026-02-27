@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -12,7 +12,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession();
   const pathname = usePathname();
   const router = useRouter();
-  const redirecting = useRef(false);
 
   const families = useQuery(
     api.families.listMyFamilies,
@@ -26,19 +25,14 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     !isPending && !!session && !isOnboarding && !isPublic && families !== undefined && families.length === 0;
 
   useEffect(() => {
-    if (redirecting.current) return;
-    if (needsLogin) {
-      redirecting.current = true;
-      router.push("/sign-in");
-    } else if (needsOnboarding) {
-      redirecting.current = true;
-      router.push("/onboarding");
-    }
-  }, [needsLogin, needsOnboarding, router]);
+    if (isPending || isPublic) return;
 
-  useEffect(() => {
-    redirecting.current = false;
-  }, [pathname]);
+    if (needsLogin) {
+      router.replace("/sign-in");
+    } else if (needsOnboarding) {
+      router.replace("/onboarding");
+    }
+  }, [isPending, isPublic, needsLogin, needsOnboarding, pathname, router]);
 
   if (isPublic) return <>{children}</>;
 

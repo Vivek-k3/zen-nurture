@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, ReactNode, useEffect, useRef } from "react";
+import { useState, ReactNode, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
-import QuickLoggerDrawer from "@/components/QuickLoggerDrawer";
+import QuickLoggerDrawer, { type QuickLogPrefill } from "@/components/QuickLoggerDrawer";
 import MoraSidebar from "@/components/MoraSidebar";
 import UserMenu from "@/components/UserMenu";
 import NotificationBell from "@/components/NotificationBell";
@@ -14,29 +14,40 @@ const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
 function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const [quickLogPrefill, setQuickLogPrefill] = useState<QuickLogPrefill | null>(null);
   const [isMoraOpen, setIsMoraOpen] = useState(false);
   const moraTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const handleOpenQuickLogger = () => setIsQuickLogOpen(true);
-    window.addEventListener('openQuickLogger', handleOpenQuickLogger);
-    return () => window.removeEventListener('openQuickLogger', handleOpenQuickLogger);
+    const handleOpenQuickLogger = (e: Event) => {
+      const detail = (e as CustomEvent<{ prefill?: QuickLogPrefill }>).detail;
+      setQuickLogPrefill(detail?.prefill ?? null);
+      setIsQuickLogOpen(true);
+    };
+    window.addEventListener("openQuickLogger", handleOpenQuickLogger);
+    return () => window.removeEventListener("openQuickLogger", handleOpenQuickLogger);
   }, []);
 
-  const openQuickLog = () => {
+  const openQuickLog = useCallback(() => {
     setIsMoraOpen(false);
+    setQuickLogPrefill(null);
     setIsQuickLogOpen(true);
-  };
+  }, []);
 
-  const openMora = () => {
+  const openMora = useCallback(() => {
     setIsQuickLogOpen(false);
     setIsMoraOpen(true);
-  };
+  }, []);
 
-  const closeMora = () => {
+  const closeMora = useCallback(() => {
     setIsMoraOpen(false);
     requestAnimationFrame(() => moraTriggerRef.current?.focus());
-  };
+  }, []);
+
+  const closeQuickLog = useCallback(() => {
+    setIsQuickLogOpen(false);
+    setQuickLogPrefill(null);
+  }, []);
 
   return (
     <div className="relative flex min-h-screen w-full bg-oat">
@@ -119,7 +130,11 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
         </button>
       </div>
 
-      <QuickLoggerDrawer isOpen={isQuickLogOpen} onClose={() => setIsQuickLogOpen(false)} />
+      <QuickLoggerDrawer
+        isOpen={isQuickLogOpen}
+        onClose={closeQuickLog}
+        initialPrefill={quickLogPrefill}
+      />
       <MoraSidebar isOpen={isMoraOpen} onClose={closeMora} />
     </div>
   );

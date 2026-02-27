@@ -13,12 +13,14 @@ import type * as digest from "../digest.js";
 import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
+import type * as lib_auth from "../lib/auth.js";
 import type * as milestones from "../milestones.js";
 import type * as mora from "../mora.js";
 import type * as nudges from "../nudges.js";
 import type * as patchOrphanBabies from "../patchOrphanBabies.js";
 import type * as photos from "../photos.js";
 import type * as push from "../push.js";
+import type * as pushCron from "../pushCron.js";
 
 import type {
   ApiFromModules,
@@ -32,12 +34,14 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   families: typeof families;
   http: typeof http;
+  "lib/auth": typeof lib_auth;
   milestones: typeof milestones;
   mora: typeof mora;
   nudges: typeof nudges;
   patchOrphanBabies: typeof patchOrphanBabies;
   photos: typeof photos;
   push: typeof push;
+  pushCron: typeof pushCron;
 }>;
 
 /**

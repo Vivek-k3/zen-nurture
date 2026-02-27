@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Track your baby's feeding, sleep, diapers, and more",
 };
 
-const MORA_TOUR = {
+const MORA_TOUR: Tour = {
   id: "mora",
   steps: [
     {
@@ -42,6 +42,8 @@ const MORA_TOUR = {
   ],
 };
 
+const TOURS: Tour[] = [MORA_TOUR];
+
 export default function RootLayout({
   children,
 }: {
@@ -58,7 +60,7 @@ export default function RootLayout({
       <body>
         <ConvexClientProvider>
           <ThemeProvider>
-            <TourProvider tours={[MORA_TOUR as Tour]}>
+            <TourProvider tours={TOURS}>
               <AuthGuard>
                 <BabyProvider>
                   <AppLayout>{children}</AppLayout>

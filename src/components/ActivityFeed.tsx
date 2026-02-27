@@ -19,7 +19,34 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
   const { data: session } = authClient.useSession();
   const now = useLiveTimer(60_000);
 
-  if (!events || events.length === 0) {
+  if (events === undefined) {
+    if (compact) return null;
+    return (
+      <div className="bg-white rounded-[20px] p-5 shadow-sm border border-muted/10">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="material-symbols-outlined text-sage text-lg">groups</span>
+          <h3 className="text-sm font-bold text-muted uppercase tracking-wider">Activity</h3>
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-sage font-bold">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
+            Live
+          </span>
+        </div>
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-lg bg-muted/10" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 rounded-full bg-muted/10 w-3/4" />
+                <div className="h-2.5 rounded-full bg-muted/10 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!events.length) {
     if (compact) return null;
     return (
       <div className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10 text-center">
@@ -44,6 +71,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
         </div>
       )}
 
+      <div className={compact ? undefined : "max-h-[280px] overflow-y-auto -mx-1 px-1"}>
       {events.map((event: any) => {
         const isMe = event.loggedBy === myUserId;
         const who = isMe ? "You" : (event.loggedByName || "Someone");
@@ -83,6 +111,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

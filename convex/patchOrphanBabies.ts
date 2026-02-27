@@ -1,11 +1,12 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
  * One-off migration: assign orphan babyProfiles (missing familyId) to the first family.
- * Run from Convex dashboard if you have schema validation errors from legacy data.
+ * Run from Convex dashboard or via `npx convex run patchOrphanBabies:assignOrphansToFirstFamily`
+ * (internal - not callable from client).
  */
-export const assignOrphansToFirstFamily = mutation({
+export const assignOrphansToFirstFamily = internalMutation({
   args: {},
   handler: async (ctx) => {
     const firstFamily = await ctx.db

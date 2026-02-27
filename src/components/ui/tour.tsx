@@ -145,70 +145,87 @@ function TourOverlay({
     const [targets, setTargets] = React.useState<
         { rect: DOMRect; radius: number }[]
     >([])
+    const targetsRef = React.useRef(targets)
+    targetsRef.current = targets
 
     React.useEffect(() => {
         let needsScroll = true
+        let rafId: number | null = null
+
+        function rectKey(r: { left: number; top: number; width: number; height: number }) {
+            return `${r.left.toFixed(0)},${r.top.toFixed(0)},${r.width.toFixed(0)},${r.height.toFixed(0)}`
+        }
 
         function updatePosition() {
-            const elements = document.querySelectorAll(
-                `[data-tour-step-id*='${step.id}']`
-            )
-
-            if (elements.length > 0) {
-                const validElements: {
-                    rect: {
-                        width: number
-                        height: number
-                        x: number
-                        y: number
-                        left: number
-                        top: number
-                        right: number
-                        bottom: number
-                        toJSON: () => void
-                    }
-                    radius: number
-                    element: Element
-                }[] = []
-
-                Array.from(elements).forEach((element) => {
-                    const rect = element.getBoundingClientRect()
-                    if (rect.width === 0 && rect.height === 0) return
-
-                    const style = window.getComputedStyle(element)
-                    const radius = Number(style.borderRadius) || 4
-
-                    validElements.push({
-                        rect: {
-                            width: rect.width,
-                            height: rect.height,
-                            x: rect.left,
-                            y: rect.top,
-                            left: rect.left,
-                            top: rect.top,
-                            right: rect.right,
-                            bottom: rect.bottom,
-                            toJSON: () => {},
-                        },
-                        radius,
-                        element,
-                    })
-                })
-
-                setTargets(
-                    validElements.map(({ rect, radius }) => ({ rect, radius }))
+            if (rafId !== null) return
+            rafId = requestAnimationFrame(() => {
+                rafId = null
+                const elements = document.querySelectorAll(
+                    `[data-tour-step-id*='${step.id}']`
                 )
 
-                if (validElements.length > 0 && needsScroll) {
-                    validElements[0].element.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
+                if (elements.length > 0) {
+                    const validElements: {
+                        rect: {
+                            width: number
+                            height: number
+                            x: number
+                            y: number
+                            left: number
+                            top: number
+                            right: number
+                            bottom: number
+                            toJSON: () => void
+                        }
+                        radius: number
+                        element: Element
+                    }[] = []
+
+                    Array.from(elements).forEach((element) => {
+                        const rect = element.getBoundingClientRect()
+                        if (rect.width === 0 && rect.height === 0) return
+
+                        const style = window.getComputedStyle(element)
+                        const radius = Number(style.borderRadius) || 4
+
+                        validElements.push({
+                            rect: {
+                                width: rect.width,
+                                height: rect.height,
+                                x: rect.left,
+                                y: rect.top,
+                                left: rect.left,
+                                top: rect.top,
+                                right: rect.right,
+                                bottom: rect.bottom,
+                                toJSON: () => {},
+                            },
+                            radius,
+                            element,
+                        })
                     })
-                    needsScroll = false
+
+                    const next = validElements.map(({ rect, radius }) => ({ rect, radius }))
+                    const prev = targetsRef.current
+                    const same =
+                        prev.length === next.length &&
+                        next.every((n, i) => {
+                            const p = prev[i]
+                            return p && rectKey(n.rect) === rectKey(p.rect)
+                        })
+                    if (!same) setTargets(next)
+
+                    if (validElements.length > 0 && needsScroll) {
+                        validElements[0].element.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                        })
+                        needsScroll = false
+                    }
+                } else {
+                    if (targetsRef.current.length > 0) setTargets([])
                 }
-            } else {
-                setTargets([])
-            }
+            })
         }
 
         updatePosition()
@@ -228,6 +245,7 @@ function TourOverlay({
         resizeObserver.observe(document.body)
 
         return () => {
+            if (rafId !== null) cancelAnimationFrame(rafId)
             window.removeEventListener("resize", handleResizeOrScroll)
             window.removeEventListener("scroll", handleResizeOrScroll, true)
             observer.disconnect()

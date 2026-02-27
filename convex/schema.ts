@@ -28,6 +28,7 @@ export default defineSchema({
     expiresAt: v.string(),
   })
     .index("by_familyId", ["familyId"])
+    .index("by_familyId_status", ["familyId", "status"])
     .index("by_email", ["email"])
     .index("by_email_status", ["email", "status"]),
 
@@ -71,6 +72,7 @@ export default defineSchema({
     updatedAt: v.optional(v.string()),
   })
     .index("by_babyId_timestamp", ["babyId", "timestamp"])
+    .index("by_babyId_type_timestamp", ["babyId", "type", "timestamp"])
     .index("by_type_timestamp", ["type", "timestamp"])
     .index("by_babyId_type", ["babyId", "type"]),
 
@@ -78,7 +80,7 @@ export default defineSchema({
     name: v.string(),
     notes: v.optional(v.string()),
     createdAt: v.string(),
-  }),
+  }).index("by_name", ["name"]),
 
   medicines: defineTable({
     name: v.string(),
@@ -86,7 +88,7 @@ export default defineSchema({
     concentrationText: v.optional(v.string()),
     instructions: v.optional(v.string()),
     createdAt: v.string(),
-  }),
+  }).index("by_name", ["name"]),
 
   reminderRules: defineTable({
     babyId: v.id("babyProfiles"),
@@ -191,5 +193,6 @@ export default defineSchema({
     createdAt: v.string(),
   })
     .index("by_threadId_createdAt", ["threadId", "createdAt"])
+    .index("by_threadId_status_createdAt", ["threadId", "status", "createdAt"])
     .index("by_status", ["status"]),
 });

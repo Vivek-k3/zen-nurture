@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import MoraOrb from "@/components/MoraOrb";
@@ -21,19 +22,63 @@ const SEVERITY_ICON_COLORS = {
   alert: "text-alert-red",
 };
 
-export default function NudgeBanner({ babyId, onOpenMora }: NudgeBannerProps) {
-  const nudges = useQuery(api.nudges.getActiveNudges, babyId ? { babyId } : "skip");
+function useMinuteClock() {
+  const [now, setNow] = useState(() =>
+    new Date(Date.now() - (Date.now() % 60_000)).toISOString()
+  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNow(new Date(Date.now() - (Date.now() % 60_000)).toISOString());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
 
-  if (!nudges || nudges.length === 0) return null;
+export default function NudgeBanner({ babyId, onOpenMora }: NudgeBannerProps) {
+  const nowIso = useMinuteClock();
+  const nudges = useQuery(
+    api.nudges.getActiveNudges,
+    babyId ? { babyId, now: nowIso } : "skip"
+  );
+
+  if (nudges === undefined) {
+    return (
+      <div className="space-y-2 mb-6">
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="rounded-2xl border p-4 flex items-start gap-3 border-muted/10 bg-oat/40 animate-pulse"
+          >
+            <div className="shrink-0 mt-0.5">
+              <div className="h-5 w-5 rounded-full bg-muted/20" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-40 rounded-full bg-muted/10" />
+              <div className="h-3 w-64 rounded-full bg-muted/10" />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="h-8 w-20 rounded-lg bg-muted/10" />
+              <div className="h-8 w-20 rounded-lg bg-muted/10" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (nudges.length === 0) return null;
 
   return (
     <div className="space-y-2 mb-6">
-      {nudges.map((nudge, i) => (
+      {nudges.map((nudge, i) => {
+        const severity = (nudge.severity && SEVERITY_STYLES[nudge.severity]) ? nudge.severity : "info";
+        return (
         <div
           key={`${nudge.type}-${i}`}
-          className={`rounded-2xl border p-4 flex items-start gap-3 ${SEVERITY_STYLES[nudge.severity]}`}
+          className={`rounded-2xl border p-4 flex items-start gap-3 ${SEVERITY_STYLES[severity]}`}
         >
-          <div className={`shrink-0 mt-0.5 ${SEVERITY_ICON_COLORS[nudge.severity]}`}>
+          <div className={`shrink-0 mt-0.5 ${SEVERITY_ICON_COLORS[severity]}`}>
             <span className="material-symbols-outlined text-xl">{nudge.icon}</span>
           </div>
 
@@ -63,7 +108,8 @@ export default function NudgeBanner({ babyId, onOpenMora }: NudgeBannerProps) {
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

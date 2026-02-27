@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
@@ -11,9 +11,20 @@ import MedicinePicker from "@/components/MedicinePicker";
 import DateTimeWheelPicker from "@/components/DateTimeWheelPicker";
 import { useBaby } from "@/components/BabyContext";
 
+export type QuickLogPrefill = {
+  view: "feed" | "diaper" | "sleep" | "meds";
+  feedSubType?: "bottle" | "breast";
+  volume?: number;
+  duration?: number;
+  diaperKind?: "wet" | "dirty" | "dry" | "mixed";
+  medName?: string;
+  isSleepingNow?: boolean;
+};
+
 interface QuickLoggerDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  initialPrefill?: QuickLogPrefill | null;
 }
 
 type LogType = "menu" | "feed" | "diaper" | "sleep" | "meds" | "note" | "growth" | "pump";
@@ -95,14 +106,14 @@ function VolumePickerCard({
 
   return (
     <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
-      <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
+      {/* <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
         {value}
         <span className="text-lg text-muted ml-1">ml</span>
-      </div>
+      </div> */}
 
       <div className="mx-auto flex max-w-[220px] items-center gap-3 rounded-2xl border border-muted/10 bg-oat/70 px-4 py-3">
         <label htmlFor="feed-volume" className="text-xs font-bold uppercase tracking-wider text-muted">
-          Manual
+          Amount
         </label>
         <input
           id="feed-volume"
@@ -146,7 +157,7 @@ function VolumePickerCard({
   );
 }
 
-const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }) => {
+const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, initialPrefill }) => {
   const [view, setView] = useState<LogType>("menu");
   const [feedSubType, setFeedSubType] = useState<FeedSubType>("bottle");
   const [diaperKind, setDiaperKind] = useState<DiaperKind>("wet");
@@ -322,8 +333,24 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose }
     setPhotoIds([]);
   }, []);
 
+  const initialPrefillRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && initialPrefill && !initialPrefillRef.current) {
+      initialPrefillRef.current = true;
+      setView(initialPrefill.view);
+      if (initialPrefill.feedSubType) setFeedSubType(initialPrefill.feedSubType);
+      if (initialPrefill.volume != null) setVolume(initialPrefill.volume);
+      if (initialPrefill.duration != null) setDuration(initialPrefill.duration);
+      if (initialPrefill.diaperKind) setDiaperKind(initialPrefill.diaperKind);
+      if (initialPrefill.medName) setMedName(initialPrefill.medName);
+      if (initialPrefill.isSleepingNow != null) setIsSleepingNow(initialPrefill.isSleepingNow);
+    }
+  }, [isOpen, initialPrefill]);
+
   useEffect(() => {
     if (!isOpen) {
+      initialPrefillRef.current = false;
       const id = setTimeout(() => {
         setView("menu");
         resetForm();
