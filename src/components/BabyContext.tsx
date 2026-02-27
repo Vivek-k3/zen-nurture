@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
@@ -36,6 +36,17 @@ export function useBaby() {
 
 const STORAGE_KEY = "zen-nurture-active-baby";
 
+/**
+ * Provides baby profiles and active-baby state to descendant components.
+ *
+ * The provider fetches baby profiles, persists and restores the selected baby id in localStorage,
+ * auto-selects the first baby after hydration if no valid selection exists, and exposes
+ * the list of babies, the currently active baby and its id, a function to switch the active baby,
+ * and a loading flag.
+ *
+ * @param children - React children to render within the provider
+ * @returns A context provider element supplying `babies`, `activeBaby`, `activeBabyId`, `switchBaby`, and `isLoading` to its subtree
+ */
 export function BabyProvider({ children }: { children: ReactNode }) {
   const babies = useQuery(api.events.getBabyProfiles, {}) as BabyProfile[] | undefined;
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -48,7 +59,7 @@ export function BabyProvider({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
 
-  const babyList = babies ?? [];
+  const babyList = useMemo(() => babies ?? [], [babies]);
 
   // Auto-select first baby if none stored
   useEffect(() => {

@@ -5,10 +5,21 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
 import { formatTime, formatDate, isToday, isYesterday } from "@/lib/time";
-import EventPhotos from "../components/EventPhotos";
+import EventPhotos from "@/components/EventPhotos";
+import { DataState } from "@/components/DataState";
 
 type TypeFilter = "all" | string;
 
+/**
+ * Renders the baby's timeline page with selectable event-type filters and events grouped by day.
+ *
+ * Displays a header with the baby name, a horizontal row of filter chips (All + event types),
+ * and a vertically grouped list of timeline cards for each day. When no baby profile exists it
+ * shows an empty profile state. While events are loading it shows a skeleton loading fallback,
+ * and when there are no events it shows an empty events state.
+ *
+ * @returns The React element for the timeline page containing header, filters, and grouped events or appropriate empty/loading states.
+ */
 export default function RecordsPage() {
   const [mounted, setMounted] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -51,23 +62,43 @@ export default function RecordsPage() {
 
       {!babyProfile ? (
         <EmptyState icon="child_friendly" title="No baby profile" subtitle="Add your baby in Settings first" />
-      ) : !events || events.length === 0 ? (
-        <EmptyState icon="timeline" title="No events yet" subtitle="Log your first event using the + button" />
       ) : (
-        <div className="space-y-6">
-          {grouped.map(({ label, events: dayEvents }) => (
-            <div key={label}>
-              <div className="sticky top-0 z-10 bg-oat/90 backdrop-blur-sm py-2 px-1">
-                <h2 className="text-xs font-bold text-muted uppercase tracking-wider">{label}</h2>
-              </div>
-              <div className="space-y-2">
-                {dayEvents.map((event: any) => (
-                  <TimelineCard key={event._id} event={event} />
-                ))}
-              </div>
+        <DataState
+          value={events}
+          loadingFallback={
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-muted/10 flex gap-3 animate-pulse">
+                  <div className="h-10 w-10 rounded-xl bg-muted/10" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-32 rounded-full bg-muted/10" />
+                    <div className="h-3 w-48 rounded-full bg-muted/10" />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          }
+          emptyFallback={
+            <EmptyState icon="timeline" title="No events yet" subtitle="Log your first event using the + button" />
+          }
+        >
+          {() => (
+            <div className="space-y-6">
+              {grouped.map(({ label, events: dayEvents }) => (
+                <div key={label}>
+                  <div className="sticky top-0 z-10 bg-oat/90 backdrop-blur-sm py-2 px-1">
+                    <h2 className="text-xs font-bold text-muted uppercase tracking-wider">{label}</h2>
+                  </div>
+                  <div className="space-y-2">
+                    {dayEvents.map((event: any) => (
+                      <TimelineCard key={event._id} event={event} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DataState>
       )}
     </div>
   );

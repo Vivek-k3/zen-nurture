@@ -1,19 +1,126 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalQuery } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
+import {
+  requireAuth,
+  getUserFamilyIds,
+  requireBabyAccess,
+} from "./lib/auth";
 
-async function requireAuth(ctx: any) {
-  const user = await authComponent.safeGetAuthUser(ctx);
-  if (!user) throw new Error("Unauthenticated");
-  return user;
+const DEFAULT_CAREGIVER_COLORS = [
+  "#7C9A82",
+  "#C4A484",
+  "#6B8CAE",
+  "#E57373",
+  "#9C7CF4",
+  "#F4B942",
+  "#4DB6AC",
+  "#7986CB",
+];
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Produce UTC start and end ISO timestamps for the given calendar date.
+ *
+ * @param date - Date string in `YYYY-MM-DD` format
+ * @returns An object with `startOfDay` set to `YYYY-MM-DDT00:00:00.000Z` and `endOfDay` set to `YYYY-MM-DDT23:59:59.999Z`
+ * @throws Error if `date` does not match the `YYYY-MM-DD` format
+ */
+function getUtcDayRange(date: string) {
+  if (!ISO_DATE_RE.test(date)) {
+    throw new Error(`Invalid date format: ${date}`);
+  }
+
+  return {
+    startOfDay: `${date}T00:00:00.000Z`,
+    endOfDay: `${date}T23:59:59.999Z`,
+  };
 }
 
-async function getUserFamilyIds(ctx: any, userId: string) {
-  const memberships = await ctx.db
-    .query("familyMembers")
-    .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+/**
+ * Selects the next caregiver color from the default palette while avoiding colors already used.
+ *
+ * @param caregivers - Existing caregivers whose `color` properties are considered when choosing the next color.
+ * @returns The chosen hex color string from DEFAULT_CAREGIVER_COLORS; if all default colors are in use, a deterministic fallback based on the number of caregivers is returned.
+ */
+function pickNextCaregiverColor(caregivers: Array<{ color?: string | null }>) {
+  const usedColors = new Set(
+    caregivers.map((caregiver) => caregiver.color).filter((color): color is string => Boolean(color))
+  );
+
+  return (
+    DEFAULT_CAREGIVER_COLORS.find((color) => !usedColors.has(color)) ??
+    DEFAULT_CAREGIVER_COLORS[caregivers.length % DEFAULT_CAREGIVER_COLORS.length]
+  );
+}
+
+/**
+ * Ensure the family owner is represented as a caregiver for the given baby.
+ *
+ * @param babyId - The `babyProfiles` id to ensure an owner caregiver exists for
+ * @returns The caregiver record for the family owner if one exists or was created, `null` if the baby has no family or the family has no owner
+ */
+async function ensureOwnerCaregiverRecord(
+  ctx: MutationCtx,
+  babyId: Id<"babyProfiles">
+) {
+  const babyProfile = await ctx.db.get(babyId);
+  if (!babyProfile?.familyId) return null;
+
+  const family = await ctx.db.get(babyProfile.familyId);
+  if (!family?.ownerId) return null;
+
+  const caregivers = await ctx.db
+    .query("caregivers")
+    .withIndex("by_babyId", (q) => q.eq("babyId", babyId))
     .collect();
-  return memberships.map((m: any) => m.familyId);
+
+  const existingOwnerCaregiver = caregivers.find(
+    (caregiver) => caregiver.userId === family.ownerId
+  );
+  if (existingOwnerCaregiver) return existingOwnerCaregiver;
+
+  const ownerUser = await authComponent.getAnyUserById(ctx, family.ownerId);
+  const displayName =
+    ownerUser?.name?.trim() ||
+    ownerUser?.email?.split("@")[0] ||
+    "Owner";
+
+  const caregiverId = await ctx.db.insert("caregivers", {
+    babyId,
+    displayName,
+    color: pickNextCaregiverColor(caregivers),
+    userId: family.ownerId,
+    createdAt: new Date().toISOString(),
+  });
+
+  return await ctx.db.get(caregiverId);
+}
+
+/**
+ * Fetches the most recent event of the specified type for a baby.
+ *
+ * @param babyId - The id of the baby profile to search events for
+ * @param eventType - The event type to match
+ * @returns The latest event matching `eventType` for `babyId`, or `null` if none exist
+ */
+async function getLatestEventForType(
+  ctx: QueryCtx,
+  babyId: Id<"babyProfiles">,
+  eventType: string
+) {
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_babyId_type_timestamp", (q) =>
+      q.eq("babyId", babyId).eq("type", eventType)
+    )
+    .order("desc")
+    .take(1);
+
+  return events[0] || null;
 }
 
 export const getBabyProfiles = query({
@@ -47,7 +154,7 @@ export const getBabyProfile = query({
 
     if (args.id) {
       const profile = await ctx.db.get(args.id);
-      if (!profile) return null;
+      if (!profile || !profile.familyId) return null;
       const familyIds = await getUserFamilyIds(ctx, user._id);
       if (!familyIds.includes(profile.familyId)) return null;
       return profile;
@@ -93,6 +200,7 @@ export const createBabyProfile = mutation({
       timezone: args.timezone || "Asia/Kolkata",
       createdAt: new Date().toISOString(),
     });
+    await ensureOwnerCaregiverRecord(ctx, id);
     return id;
   },
 });
@@ -111,6 +219,8 @@ export const updateBabyProfile = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.id, user._id);
     const { id, ...updates } = args;
     await ctx.db.patch(id, updates);
     return id;
@@ -120,6 +230,9 @@ export const updateBabyProfile = mutation({
 export const listCaregivers = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     return await ctx.db
       .query("caregivers")
       .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
@@ -134,6 +247,8 @@ export const createCaregiver = mutation({
     color: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const id = await ctx.db.insert("caregivers", {
       ...args,
       createdAt: new Date().toISOString(),
@@ -142,9 +257,46 @@ export const createCaregiver = mutation({
   },
 });
 
+export const ensureOwnerCaregiver = mutation({
+  args: { babyId: v.id("babyProfiles") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const babyProfile = await ctx.db.get(args.babyId);
+    if (!babyProfile) throw new Error("Baby profile not found");
+    if (!babyProfile.familyId) return null;
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (!familyIds.includes(babyProfile.familyId)) {
+      throw new Error("Not a member of this family");
+    }
+
+    return await ensureOwnerCaregiverRecord(ctx, args.babyId);
+  },
+});
+
 export const deleteCaregiver = mutation({
   args: { id: v.id("caregivers") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const caregiver = await ctx.db.get(args.id);
+    if (!caregiver) return;
+
+    const babyProfile = await ctx.db.get(caregiver.babyId);
+    if (!babyProfile?.familyId) {
+      await ctx.db.delete(args.id);
+      return;
+    }
+
+    const familyIds = await getUserFamilyIds(ctx, user._id);
+    if (!familyIds.includes(babyProfile.familyId)) {
+      throw new Error("Not a member of this family");
+    }
+
+    const family = await ctx.db.get(babyProfile.familyId);
+    if (family?.ownerId && caregiver.userId === family.ownerId) {
+      throw new Error("Cannot remove the owner caregiver");
+    }
+
     await ctx.db.delete(args.id);
   },
 });
@@ -158,18 +310,21 @@ export const listEvents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     let q = ctx.db
       .query("events")
       .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId));
 
     if (args.from) {
-      q = q.filter((q) => q.gte("timestamp", args.from!));
+      q = q.filter((q) => q.gte(q.field("timestamp"), args.from!));
     }
     if (args.to) {
-      q = q.filter((q) => q.lte("timestamp", args.to!));
+      q = q.filter((q) => q.lte(q.field("timestamp"), args.to!));
     }
     if (args.type) {
-      q = q.filter((q) => q.eq("type", args.type!));
+      q = q.filter((q) => q.eq(q.field("type"), args.type!));
     }
 
     const results = await q.order("desc").take(args.limit || 100);
@@ -183,21 +338,15 @@ export const getEventsByDate = query({
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    const startOfDay = new Date(args.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(args.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const { startOfDay, endOfDay } = getUtcDayRange(args.date);
 
     return await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", startOfDay.toISOString()),
-          q.lte("timestamp", endOfDay.toISOString())
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId).gte("timestamp", startOfDay).lte("timestamp", endOfDay)
       )
       .order("desc")
       .collect();
@@ -210,17 +359,10 @@ export const getLastEventByType = query({
     eventType: v.string(),
   },
   handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_babyId_type", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.eq("type", args.eventType)
-      )
-      .order("desc")
-      .take(1);
-    return events[0] || null;
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    return await getLatestEventForType(ctx, args.babyId, args.eventType);
   },
 });
 
@@ -230,21 +372,17 @@ export const getLastEventsByTypes = query({
     eventTypes: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const results: Record<string, any | null> = {};
-    
-    for (const eventType of args.eventTypes) {
-      const events = await ctx.db
-        .query("events")
-        .withIndex("by_babyId_type", (q) => 
-          q.eq("babyId", args.babyId as any)
-        )
-        .filter((q) => q.eq("type", eventType))
-        .order("desc")
-        .take(1);
-      results[eventType] = events[0] || null;
-    }
-    
-    return results;
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return {};
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const entries = await Promise.all(
+      args.eventTypes.map(async (eventType) => [
+        eventType,
+        await getLatestEventForType(ctx, args.babyId, eventType),
+      ] as const)
+    );
+
+    return Object.fromEntries(entries);
   },
 });
 
@@ -252,30 +390,43 @@ export const getDailyAggregates = query({
   args: {
     babyId: v.id("babyProfiles"),
     date: v.string(),
+    formulaName: v.optional(v.string()),
+    feedContentType: v.optional(v.string()),
+    medicineName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const startOfDay = new Date(args.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(args.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const { startOfDay, endOfDay } = getUtcDayRange(args.date);
 
     const events = await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", startOfDay.toISOString()),
-          q.lte("timestamp", endOfDay.toISOString())
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId).gte("timestamp", startOfDay).lte("timestamp", endOfDay)
       )
       .collect();
 
-    const feeds = events.filter(e => e.type.startsWith("FEED"));
+    const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
+      if (e.type === "FEED_BOTTLE") {
+        if (args.formulaName) return ((e.payload as any)?.formulaName ?? "") === args.formulaName;
+        if (args.feedContentType) return ((e.payload as any)?.contentType ?? "formula") === args.feedContentType;
+        return true;
+      }
+      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      if (e.type === "PUMP") return !args.formulaName && !args.feedContentType;
+      return false;
+    };
+    const matchMeds = (e: { type: string; payload?: { medicineName?: string } }) => {
+      if (e.type !== "MED_DOSE") return false;
+      if (args.medicineName) return ((e.payload as any)?.medicineName ?? "") === args.medicineName;
+      return true;
+    };
+
+    const feeds = events.filter(e => e.type.startsWith("FEED") && matchFeed(e));
     const diapers = events.filter(e => e.type === "DIAPER");
     const sleeps = events.filter(e => e.type === "SLEEP");
-    const meds = events.filter(e => e.type === "MED_DOSE");
+    const meds = events.filter(e => e.type === "MED_DOSE" && matchMeds(e));
 
     let totalFeedMl = 0;
     let totalBreastMin = 0;
@@ -375,22 +526,37 @@ export const getRangeAggregates = query({
     babyId: v.id("babyProfiles"),
     from: v.string(),
     to: v.string(),
+    formulaName: v.optional(v.string()),
+    feedContentType: v.optional(v.string()),
+    medicineName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return {};
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const events = await ctx.db
       .query("events")
-      .withIndex("by_babyId_timestamp", (q) => 
-        q.eq("babyId", args.babyId as any)
-      )
-      .filter((q) =>
-        q.and(
-          q.gte("timestamp", args.from),
-          q.lte("timestamp", args.to)
-        )
+      .withIndex("by_babyId_timestamp", (q) =>
+        q.eq("babyId", args.babyId).gte("timestamp", args.from).lte("timestamp", args.to)
       )
       .collect();
 
     const dailyData: Record<string, any> = {};
+    const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
+      if (e.type === "FEED_BOTTLE") {
+        if (args.formulaName) return (e.payload?.formulaName ?? "") === args.formulaName;
+        if (args.feedContentType) return (e.payload?.contentType ?? "formula") === args.feedContentType;
+        return true;
+      }
+      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      if (e.type === "PUMP") return !args.formulaName && !args.feedContentType;
+      return false;
+    };
+    const matchMeds = (e: { type: string; payload?: { medicineName?: string } }) => {
+      if (e.type !== "MED_DOSE") return false;
+      if (args.medicineName) return (e.payload?.medicineName ?? "") === args.medicineName;
+      return true;
+    };
     
     events.forEach(e => {
       const date = e.timestamp.split("T")[0];
@@ -415,12 +581,12 @@ export const getRangeAggregates = query({
 
       const payload = e.payload as any;
       
-      if (e.type === "FEED_BOTTLE" && payload?.amountMl) {
+      if (e.type === "FEED_BOTTLE" && payload?.amountMl && matchFeed(e)) {
         dailyData[date].feeds.count++;
         dailyData[date].feeds.totalMl += payload.amountMl;
-      } else if (e.type === "FEED_BREAST") {
+      } else if (e.type === "FEED_BREAST" && matchFeed(e)) {
         dailyData[date].feeds.count++;
-      } else if (e.type === "PUMP" && payload?.amountMl) {
+      } else if (e.type === "PUMP" && payload?.amountMl && matchFeed(e)) {
         dailyData[date].feeds.totalMl += payload.amountMl;
       } else if (e.type === "DIAPER") {
         dailyData[date].diapers.count++;
@@ -442,7 +608,7 @@ export const getRangeAggregates = query({
         const start = new Date(payload.startTs).getTime();
         const end = new Date(payload.endTs).getTime();
         dailyData[date].sleeps.totalMin += Math.floor((end - start) / 60000);
-      } else if (e.type === "MED_DOSE") {
+      } else if (e.type === "MED_DOSE" && matchMeds(e)) {
         if (payload?.outcome === "taken") dailyData[date].meds.taken++;
         else if (payload?.outcome === "skipped") dailyData[date].meds.skipped++;
       }
@@ -463,12 +629,14 @@ export const createEvent = mutation({
     photoIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const id = await ctx.db.insert("events", {
       ...args,
       source: args.source || "manual",
       createdAt: new Date().toISOString(),
-      ...(user ? { loggedBy: user._id, loggedByName: user.name } : {}),
+      loggedBy: user._id,
+      loggedByName: user.name,
     });
     return id;
   },
@@ -482,6 +650,10 @@ export const updateEvent = mutation({
     payload: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const event = await ctx.db.get(args.id);
+    if (!event) throw new Error("Event not found");
+    await requireBabyAccess(ctx, event.babyId, user._id);
     const { id, ...updates } = args;
     await ctx.db.patch(id, {
       ...updates,
@@ -494,6 +666,10 @@ export const updateEvent = mutation({
 export const deleteEvent = mutation({
   args: { id: v.id("events") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const event = await ctx.db.get(args.id);
+    if (!event) throw new Error("Event not found");
+    await requireBabyAccess(ctx, event.babyId, user._id);
     await ctx.db.delete(args.id);
   },
 });
@@ -501,7 +677,51 @@ export const deleteEvent = mutation({
 export const listFormulas = query({
   args: {},
   handler: async (ctx) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
     return await ctx.db.query("formulas").collect();
+  },
+});
+
+export const getFormulasUsedByBaby = query({
+  args: { babyId: v.id("babyProfiles"), from: v.string() },
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_babyId_type_timestamp", (q) =>
+        q.eq("babyId", args.babyId).eq("type", "FEED_BOTTLE").gte("timestamp", args.from)
+      )
+      .collect();
+    const names = new Set<string>();
+    for (const e of events) {
+      const name = (e.payload as { formulaName?: string })?.formulaName;
+      if (name?.trim()) names.add(name.trim());
+    }
+    return Array.from(names).sort();
+  },
+});
+
+export const getMedicinesUsedByBaby = query({
+  args: { babyId: v.id("babyProfiles"), from: v.string() },
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_babyId_type_timestamp", (q) =>
+        q.eq("babyId", args.babyId).eq("type", "MED_DOSE").gte("timestamp", args.from)
+      )
+      .collect();
+    const names = new Set<string>();
+    for (const e of events) {
+      const name = (e.payload as { medicineName?: string })?.medicineName;
+      if (name?.trim()) names.add(name.trim());
+    }
+    return Array.from(names).sort();
   },
 });
 
@@ -511,9 +731,10 @@ export const upsertFormula = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const existing = await ctx.db
       .query("formulas")
-      .filter((q) => q.eq("name", args.name))
+      .withIndex("by_name", (q) => q.eq("name", args.name))
       .take(1);
 
     if (existing.length > 0) {
@@ -531,6 +752,8 @@ export const upsertFormula = mutation({
 export const listMedicines = query({
   args: {},
   handler: async (ctx) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
     return await ctx.db.query("medicines").collect();
   },
 });
@@ -543,9 +766,10 @@ export const upsertMedicine = mutation({
     instructions: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const existing = await ctx.db
       .query("medicines")
-      .filter((q) => q.eq("name", args.name))
+      .withIndex("by_name", (q) => q.eq("name", args.name))
       .take(1);
 
     if (existing.length > 0) {
@@ -564,9 +788,12 @@ export const upsertMedicine = mutation({
 export const listReminderRules = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     return await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .order("desc")
       .collect();
   },
@@ -575,7 +802,12 @@ export const listReminderRules = query({
 export const getReminderRule = query({
   args: { id: v.id("reminderRules") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    const rule = await ctx.db.get(args.id);
+    if (!rule) return null;
+    await requireBabyAccess(ctx, rule.babyId, user._id);
+    return rule;
   },
 });
 
@@ -592,6 +824,8 @@ export const createReminderRule = mutation({
     snoozeOptions: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const id = await ctx.db.insert("reminderRules", {
       ...args,
       enabled: args.enabled ?? true,
@@ -613,6 +847,10 @@ export const updateReminderRule = mutation({
     snoozeOptions: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const rule = await ctx.db.get(args.id);
+    if (!rule) throw new Error("Reminder rule not found");
+    await requireBabyAccess(ctx, rule.babyId, user._id);
     const { id, ...updates } = args;
     await ctx.db.patch(id, updates);
     return id;
@@ -622,6 +860,10 @@ export const updateReminderRule = mutation({
 export const deleteReminderRule = mutation({
   args: { id: v.id("reminderRules") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const rule = await ctx.db.get(args.id);
+    if (!rule) throw new Error("Reminder rule not found");
+    await requireBabyAccess(ctx, rule.babyId, user._id);
     await ctx.db.delete(args.id);
   },
 });
@@ -632,10 +874,13 @@ export const computeUpcomingReminders = query({
     now: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const currentTime = args.now ? new Date(args.now) : new Date();
     const rules = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .collect();
 
     const enabledRules = rules.filter((r) => r.enabled);
@@ -643,17 +888,14 @@ export const computeUpcomingReminders = query({
 
     for (const rule of enabledRules) {
       if (rule.category !== "custom" && rule.triggerType === "afterLastEventType") {
-        const events = await ctx.db
-          .query("events")
-          .withIndex("by_babyId_type", (q) => 
-            q.eq("babyId", args.babyId as any)
-          )
-          .filter((q) => q.eq("type", rule.triggerConfig?.lastEventType))
-          .order("desc")
-          .take(1);
-        
-        if (events.length > 0) {
-          lastEvents[rule._id] = events[0];
+        const latestEvent = await getLatestEventForType(
+          ctx,
+          args.babyId,
+          rule.triggerConfig?.lastEventType
+        );
+
+        if (latestEvent) {
+          lastEvents[rule._id] = latestEvent;
         }
       }
     }
@@ -701,6 +943,78 @@ export const computeUpcomingReminders = query({
   },
 });
 
+export const internalComputeUpcomingReminders = internalQuery({
+  args: {
+    babyId: v.id("babyProfiles"),
+    now: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentTime = args.now ? new Date(args.now) : new Date();
+    const rules = await ctx.db
+      .query("reminderRules")
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
+      .collect();
+
+    const enabledRules = rules.filter((r) => r.enabled);
+    const lastEvents: Record<string, { timestamp: string }> = {};
+
+    for (const rule of enabledRules) {
+      if (rule.category !== "custom" && rule.triggerType === "afterLastEventType") {
+        const latestEvent = await getLatestEventForType(
+          ctx,
+          args.babyId,
+          rule.triggerConfig?.lastEventType
+        );
+
+        if (latestEvent) {
+          lastEvents[rule._id] = latestEvent;
+        }
+      }
+    }
+
+    const upcoming: Array<{
+      rule: (typeof rules)[0];
+      dueTime: string;
+      isOverdue: boolean;
+    }> = [];
+
+    for (const rule of enabledRules) {
+      if (rule.triggerType === "fixedTimes" && rule.triggerConfig?.times) {
+        for (const time of rule.triggerConfig.times) {
+          const [hours, minutes] = time.split(":").map(Number);
+          const dueTime = new Date(currentTime);
+          dueTime.setHours(hours, minutes, 0, 0);
+
+          if (dueTime < currentTime) {
+            dueTime.setDate(dueTime.getDate() + 1);
+          }
+
+          upcoming.push({
+            rule,
+            dueTime: dueTime.toISOString(),
+            isOverdue: false,
+          });
+        }
+      } else if (rule.triggerType === "afterLastEventType" && lastEvents[rule._id]) {
+        const lastEvent = lastEvents[rule._id];
+        const lastEventTime = new Date(lastEvent.timestamp);
+        const intervalMs = (rule.triggerConfig?.intervalHours || 3) * 60 * 60 * 1000;
+        const dueTime = new Date(lastEventTime.getTime() + intervalMs);
+
+        upcoming.push({
+          rule,
+          dueTime: dueTime.toISOString(),
+          isOverdue: dueTime < currentTime,
+        });
+      }
+    }
+
+    return upcoming.sort((a, b) =>
+      new Date(a.dueTime).getTime() - new Date(b.dueTime).getTime()
+    ).slice(0, 10);
+  },
+});
+
 export const listTimeline = query({
   args: {
     babyId: v.id("babyProfiles"),
@@ -708,6 +1022,9 @@ export const listTimeline = query({
     type: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     let q = ctx.db
       .query("events")
       .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId));
@@ -726,6 +1043,9 @@ export const listGrowthEvents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return [];
+    await requireBabyAccess(ctx, args.babyId, user._id);
     return await ctx.db
       .query("events")
       .withIndex("by_babyId_type", (q) =>
@@ -740,18 +1060,20 @@ export const listGrowthEvents = query({
 export const exportBabyData = query({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const profile = await ctx.db.get(args.babyId);
     const events = await ctx.db
       .query("events")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId))
       .collect();
     const caregivers = await ctx.db
       .query("caregivers")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .collect();
     const reminders = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .collect();
     const formulas = await ctx.db.query("formulas").collect();
     const medicines = await ctx.db.query("medicines").collect();
@@ -771,9 +1093,11 @@ export const exportBabyData = query({
 export const clearBabyData = mutation({
   args: { babyId: v.id("babyProfiles") },
   handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
     const events = await ctx.db
       .query("events")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", args.babyId))
       .collect();
     
     for (const event of events) {
@@ -782,7 +1106,7 @@ export const clearBabyData = mutation({
 
     const reminders = await ctx.db
       .query("reminderRules")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .collect();
     
     for (const reminder of reminders) {
@@ -791,7 +1115,7 @@ export const clearBabyData = mutation({
 
     const caregivers = await ctx.db
       .query("caregivers")
-      .filter((q) => q.eq("babyId", args.babyId as any))
+      .withIndex("by_babyId", (q) => q.eq("babyId", args.babyId))
       .collect();
     
     for (const caregiver of caregivers) {

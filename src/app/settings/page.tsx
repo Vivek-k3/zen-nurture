@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { CAREGIVER_COLORS } from "@/lib/constants";
@@ -10,6 +10,13 @@ import { Switch } from "@/components/ui/switch";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useTheme } from "@/components/ThemeContext";
 
+/**
+ * Render the Settings page UI for managing family, baby profile, caregivers, invitations, notifications, appearance, Mora AI settings, and data export/clear.
+ *
+ * Renders interactive sections for creating and managing a family, inviting and listing caregivers, editing or creating a baby profile (including measurement units and timezone), exporting/clearing baby data, choosing theme appearance, configuring push notifications, and toggling Mora AI settings. The component coordinates Convex queries and mutations, local form state, and small UI behaviors (e.g., random family name roll, caregiver color selection).
+ *
+ * @returns A React element representing the Settings page, or `null` until the component has mounted.
+ */
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
   const [babyForm, setBabyForm] = useState({
@@ -32,6 +39,7 @@ export default function SettingsPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
+  const ensuredOwnerCaregiverForBaby = useRef<string | null>(null);
   const push = usePushNotifications();
   const { theme, setTheme } = useTheme();
 
@@ -68,6 +76,7 @@ export default function SettingsPage() {
   const createBabyProfile = useMutation(api.events.createBabyProfile);
   const updateBabyProfile = useMutation(api.events.updateBabyProfile);
   const createCaregiver = useMutation(api.events.createCaregiver);
+  const ensureOwnerCaregiver = useMutation(api.events.ensureOwnerCaregiver);
   const deleteCaregiver = useMutation(api.events.deleteCaregiver);
 
   const clearData = useMutation(api.events.clearBabyData);
@@ -102,6 +111,32 @@ export default function SettingsPage() {
       });
     }
   }, [babyProfile]);
+
+  useEffect(() => {
+    if (!babyId) {
+      ensuredOwnerCaregiverForBaby.current = null;
+      return;
+    }
+
+    const babyKey = String(babyId);
+    if (ensuredOwnerCaregiverForBaby.current === babyKey) return;
+
+    ensuredOwnerCaregiverForBaby.current = babyKey;
+    void ensureOwnerCaregiver({ babyId }).catch(() => {
+      ensuredOwnerCaregiverForBaby.current = null;
+    });
+  }, [babyId, ensureOwnerCaregiver]);
+
+  useEffect(() => {
+    if (!caregivers || caregiverForm.displayName) return;
+
+    const usedColors = new Set(caregivers.map((caregiver: any) => caregiver.color));
+    const nextColor = CAREGIVER_COLORS.find((color) => !usedColors.has(color)) ?? CAREGIVER_COLORS[0];
+
+    if (caregiverForm.color !== nextColor) {
+      setCaregiverForm((prev) => ({ ...prev, color: nextColor }));
+    }
+  }, [caregivers, caregiverForm.displayName, caregiverForm.color]);
 
   const rollFamilyName = () => {
     setDiceSpinning(true);
@@ -546,15 +581,25 @@ export default function SettingsPage() {
                       className="h-8 w-8 rounded-full"
                       style={{ backgroundColor: caregiver.color }}
                     />
-                    <span className="font-medium text-espresso">{caregiver.displayName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-espresso">{caregiver.displayName}</span>
+                      {caregiver.userId === currentFamily?.ownerId && (
+                        <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-sage">
+                          Owner
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteCaregiver({ id: caregiver._id })}
-                    className="text-muted hover:text-alert-red"
-                  >
-                    <span className="material-symbols-outlined text-sm">delete</span>
-                  </button>
+                  {(!caregiver.userId ||
+                    (currentFamily?.ownerId && caregiver.userId !== currentFamily.ownerId)) && (
+                    <button
+                      type="button"
+                      onClick={() => deleteCaregiver({ id: caregiver._id })}
+                      className="text-muted hover:text-alert-red"
+                    >
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

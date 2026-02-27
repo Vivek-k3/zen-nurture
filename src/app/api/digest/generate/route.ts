@@ -2,12 +2,39 @@ import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
+import { getToken } from "@/lib/auth";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+/**
+ * Create a Convex HTTP client configured from the NEXT_PUBLIC_CONVEX_URL environment variable.
+ *
+ * @param token - Optional authentication token to attach to the client via `setAuth`
+ * @returns A configured ConvexHttpClient instance
+ * @throws If `NEXT_PUBLIC_CONVEX_URL` is not set
+ */
+function getConvex(token?: string) {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured");
+  const client = new ConvexHttpClient(url);
+  if (token) client.setAuth(token);
+  return client;
+}
 
+/**
+ * Generate and persist a warm, concise weekly digest for the specified baby using recent tracked metrics.
+ *
+ * Persists the generated summary to the backend digest store and returns the summary together with this week's and last week's metrics.
+ *
+ * @param req - HTTP request whose JSON body must include `babyId`
+ * @returns A JSON Response containing `{ summary, thisWeek, lastWeek }` on success; on failure the response contains an `error` message and an appropriate HTTP status
+ */
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
+  }
+
+  const token = await getToken();
+  if (!token) {
+    return Response.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
   const { babyId } = await req.json();
@@ -15,6 +42,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "babyId required" }, { status: 400 });
   }
 
+  const convex = getConvex(token);
   const profile = await convex.query(api.events.getBabyProfile, { id: babyId });
   const comparison = await convex.query(api.digest.getWeeklyComparison, { babyId });
 
