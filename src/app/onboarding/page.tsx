@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 
 type Step = "family" | "baby";
+const UNSPECIFIED_GENDER_VALUE = "unspecified";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -209,12 +210,17 @@ export default function OnboardingPage() {
                   <label htmlFor="ob-baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">
                     Gender
                   </label>
-                <Select value={babyGender} onValueChange={setBabyGender}>
+                <Select
+                  value={babyGender || UNSPECIFIED_GENDER_VALUE}
+                  onValueChange={(value) =>
+                    setBabyGender(value === UNSPECIFIED_GENDER_VALUE ? "" : value)
+                  }
+                >
                   <AppSelectTrigger id="ob-baby-gender">
                     <SelectValue placeholder="Not specified" />
                   </AppSelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Not specified</SelectItem>
+                    <SelectItem value={UNSPECIFIED_GENDER_VALUE}>Not specified</SelectItem>
                     <SelectItem value="baby-boy">Baby Boy</SelectItem>
                     <SelectItem value="baby-girl">Baby Girl</SelectItem>
                   </SelectContent>

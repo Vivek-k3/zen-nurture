@@ -1,10 +1,38 @@
 import { httpRouter } from "convex/server";
-import { authComponent, createAuth } from "./auth";
+import { handleAuthHttp, redirectOpenIdConfiguration } from "./authHttp";
 import { getSubsForCron, unsubscribeStaleEndpoint } from "./pushCron";
 
 const http = httpRouter();
 
-authComponent.registerRoutes(http, createAuth);
+http.route({
+  path: "/.well-known/openid-configuration",
+  method: "GET",
+  handler: redirectOpenIdConfiguration,
+});
+
+http.route({
+  pathPrefix: "/api/auth/",
+  method: "GET",
+  handler: handleAuthHttp,
+});
+
+http.route({
+  path: "/api/auth",
+  method: "GET",
+  handler: handleAuthHttp,
+});
+
+http.route({
+  pathPrefix: "/api/auth/",
+  method: "POST",
+  handler: handleAuthHttp,
+});
+
+http.route({
+  path: "/api/auth",
+  method: "POST",
+  handler: handleAuthHttp,
+});
 
 http.route({
   path: "/api/push/cron-subs",

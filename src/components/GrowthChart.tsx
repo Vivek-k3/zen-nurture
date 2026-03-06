@@ -168,7 +168,6 @@ export default function GrowthChart({ events, dob, gender, metric }: GrowthChart
     </div>
   );
 }
-
 function interpolatePercentiles(percentiles: ReturnType<typeof getWHOPercentiles>, month: number) {
   const low = Math.floor(month);
   const high = Math.ceil(month);
@@ -195,3 +194,4 @@ function interpolatePercentiles(percentiles: ReturnType<typeof getWHOPercentiles
 function round(n: number) {
   return Math.round(n * 10) / 10;
 }
+

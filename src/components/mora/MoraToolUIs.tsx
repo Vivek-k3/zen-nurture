@@ -6,6 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import MoraOrb from "@/components/MoraOrb";
+import { ShimmeringText } from "@/components/shimmering-text/shimmering-text";
 
 const EVENT_ICONS: Record<string, { icon: string; color: string; label: string }> = {
   FEED_BOTTLE: { icon: "water_drop", color: "text-sage", label: "Bottle Feed" },
@@ -25,17 +26,39 @@ function getEventMeta(type?: string) {
 
 /* ---------- Read Tool UI ---------- */
 
-function ReadToolUI({ name, status }: { name: string; status: string }) {
+function getReadToolLoadingMessage(name: string, args?: Record<string, unknown>): string {
+  const days = args?.from && args?.to
+    ? Math.ceil((new Date(args.to as string).getTime() - new Date(args.from as string).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const hours = typeof args?.hours === "number" ? args.hours : null;
+  const map: Record<string, string> = {
+    get_baby_age: "Calculating baby's age",
+    get_baby_profile: "Reading baby profile",
+    get_last_24h_summary: "Summarizing last 24 hours",
+    get_recent_events: hours ? `Reading last ${hours}h of events` : "Reading feed history",
+    get_historic_events: days ? `Fetching last ${days} days data` : "Fetching historic events",
+    get_daily_summary: "Fetching daily summary",
+    get_range_summary: days ? `Fetching last ${days} days summary` : "Fetching range summary",
+    get_reminders: "Fetching reminders",
+    get_last_events_by_type: "Fetching latest events",
+    search_records: "Searching records",
+  };
+  return map[name] ?? `Reading ${formatName(name).toLowerCase()}`;
+}
+
+function ReadToolUI({ name, status, args }: { name: string; status: string; args?: Record<string, unknown> }) {
   const isDone = status === "complete";
+  const loadingMsg = getReadToolLoadingMessage(name, args);
   return (
-    <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+    <div className="my-1.5 flex items-center gap-2 text-[11px]">
       {isDone ? (
-        <span className="material-symbols-outlined text-sage text-[16px]">check_circle</span>
+        <span className="material-symbols-outlined text-sage text-[14px]">check_circle</span>
       ) : (
         <MoraOrb size="xs" state="thinking" />
       )}
-      <span className="font-medium text-espresso">{formatName(name)}</span>
-      <span className="text-muted">&middot; {isDone ? "Done" : "Fetching..."}</span>
+      <span className="rounded-md bg-black/5 px-2 py-0.5 text-muted">
+        {isDone ? formatName(name) : <ShimmeringText text={loadingMsg} duration={1.5} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />}
+      </span>
     </div>
   );
 }
@@ -56,21 +79,17 @@ function CreateEventUI({ args, status, result }: { args: any; status: string; re
   if (payload.kind) detailParts.push(payload.kind);
   if (payload.medicineName) detailParts.push(payload.medicineName);
   if (payload.text) detailParts.push(payload.text.slice(0, 60));
+  if (payload.weightKg) detailParts.push(`${payload.weightKg}kg`);
+  if (payload.heightCm) detailParts.push(`${payload.heightCm}cm`);
+  if (payload.headCm) detailParts.push(`head ${payload.headCm}cm`);
   const detail = detailParts.join(" · ") || args?.preview || "";
 
   return (
-    <div className="my-2 rounded-xl border border-sage/20 bg-white p-3 shadow-sm text-[12px]">
-      <div className="flex items-center gap-2.5 mb-2">
-        <div className={`h-8 w-8 rounded-lg bg-oat flex items-center justify-center ${meta.color}`}>
-          <span className="material-symbols-outlined text-[18px]">{meta.icon}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-espresso">{meta.label}</p>
-          {detail && <p className="text-muted truncate">{detail}</p>}
-        </div>
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-sage/20 bg-sage/10 text-sage">
-          create
-        </span>
+    <div className="my-1.5 rounded-md bg-black/5 p-2 text-[12px]">
+      <div className="flex items-center gap-2 mb-1">
+        <span className={`material-symbols-outlined text-[16px] ${meta.color}`}>{meta.icon}</span>
+        <p className="font-medium text-espresso">{meta.label}</p>
+        {detail && <p className="text-muted truncate text-[11px]">{detail}</p>}
       </div>
 
       {!isDone && <StatusPill label="Processing..." spinning />}
@@ -88,8 +107,6 @@ function WriteToolUI({ name, args, status, result }: { name: string; args: any; 
   const isDelete = name.includes("delete");
   const isUpdate = name.includes("update");
 
-  const borderColor = isDelete ? "border-alert-red/20" : isUpdate ? "border-night/10" : "border-sage/20";
-  const bgColor = isDelete ? "bg-alert-red/5" : isUpdate ? "bg-night/5" : "bg-white";
   const badgeColor = isDelete
     ? "bg-alert-red/10 text-alert-red border-alert-red/20"
     : isUpdate
@@ -98,10 +115,10 @@ function WriteToolUI({ name, args, status, result }: { name: string; args: any; 
   const actionLabel = name.split("_").pop() ?? "action";
 
   return (
-    <div className={`my-2 rounded-xl border p-3 shadow-sm text-[12px] ${borderColor} ${bgColor}`}>
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="font-semibold text-espresso">{preview}</p>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${badgeColor}`}>
+    <div className="my-1.5 rounded-md bg-black/5 p-2 text-[12px]">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="font-medium text-espresso">{preview}</p>
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${badgeColor}`}>
           {actionLabel}
         </span>
       </div>
@@ -183,7 +200,7 @@ function ApprovalCard({ actionId, preview }: { actionId: string; preview?: strin
   };
 
   return (
-    <div className="mt-1.5 p-2.5 rounded-lg bg-oat/60 border border-black/5">
+    <div className="mt-1 p-2 rounded-md bg-black/5">
       <p className="text-[11px] text-muted mb-2">
         {preview ? `"${preview}" — ` : ""}Approve this action?
       </p>
@@ -218,7 +235,13 @@ function StatusPill({ label, spinning }: { label: string; spinning?: boolean }) 
   return (
     <div className="flex items-center gap-1.5 text-muted">
       {spinning ? <MoraOrb size="xs" state="thinking" /> : null}
-      <span>{label}</span>
+      <span>
+        {spinning ? (
+          <ShimmeringText text={label} duration={1.5} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />
+        ) : (
+          label
+        )}
+      </span>
     </div>
   );
 }
@@ -238,7 +261,7 @@ function normalize(result: any) {
 /* ---------- Tool UI Registration ---------- */
 
 const READ_TOOLS = [
-  "get_baby_profile", "get_recent_events", "get_historic_events",
+  "get_baby_age", "get_baby_profile", "get_last_24h_summary", "get_recent_events", "get_historic_events",
   "get_daily_summary", "get_range_summary", "get_reminders",
   "get_last_events_by_type", "search_records", "analyze_patterns",
   "generate_weekly_digest", "check_nudges",
@@ -251,23 +274,25 @@ function PatternAnalysisUI({ status, result }: { status: string; result: any }) 
 
   if (!isDone) {
     return (
-      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+      <div className="my-1.5 flex items-center gap-2 text-[11px]">
         <MoraOrb size="xs" state="thinking" />
-        <span className="font-medium text-espresso">Analyzing patterns...</span>
+        <span className="rounded-md bg-black/5 px-2 py-0.5">
+          <ShimmeringText text="Analyzing patterns..." duration={1.5} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />
+        </span>
       </div>
     );
   }
 
   if (!patterns || Object.keys(patterns).length === 0) {
     return (
-      <div className="my-2 rounded-xl border border-muted/15 bg-oat/40 p-3 text-[12px]">
-        <span className="text-muted">No pattern data found.</span>
+      <div className="my-1.5 text-[11px] text-muted">
+        No pattern data found.
       </div>
     );
   }
 
   return (
-    <div className="my-2 rounded-xl border border-sage/20 bg-white p-3 shadow-sm text-[12px] space-y-2">
+    <div className="my-1.5 rounded-md bg-black/5 p-2 text-[12px] space-y-1.5">
       <div className="flex items-center gap-2 mb-1">
         <span className="material-symbols-outlined text-sage text-[16px]">insights</span>
         <span className="font-semibold text-espresso">Pattern Analysis</span>
@@ -296,17 +321,19 @@ function DigestUI({ status, result }: { status: string; result: any }) {
 
   if (!isDone) {
     return (
-      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+      <div className="my-1.5 flex items-center gap-2 text-[11px]">
         <MoraOrb size="xs" state="thinking" />
-        <span className="font-medium text-espresso">Generating weekly digest...</span>
+        <span className="rounded-md bg-black/5 px-2 py-0.5">
+          <ShimmeringText text="Generating weekly digest..." duration={1.5} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />
+        </span>
       </div>
     );
   }
 
   if (!data?.thisWeek || !data?.lastWeek) {
     return (
-      <div className="my-2 rounded-xl border border-muted/15 bg-oat/40 p-3 text-[12px]">
-        <span className="text-muted">No data available for digest.</span>
+      <div className="my-1.5 text-[11px] text-muted">
+        No data available for digest.
       </div>
     );
   }
@@ -315,7 +342,7 @@ function DigestUI({ status, result }: { status: string; result: any }) {
   const lw = data.lastWeek;
 
   return (
-    <div className="my-2 rounded-xl border border-sage/20 bg-white p-3 shadow-sm text-[12px] space-y-2">
+    <div className="my-1.5 rounded-md bg-black/5 p-2 text-[12px] space-y-1.5">
       <div className="flex items-center gap-2 mb-1">
         <span className="material-symbols-outlined text-sage text-[16px]">summarize</span>
         <span className="font-semibold text-espresso">Weekly Comparison</span>
@@ -361,16 +388,18 @@ function NudgesUI({ status, result }: { status: string; result: any }) {
 
   if (!isDone) {
     return (
-      <div className="my-2 rounded-xl border border-sage/15 bg-sage/5 px-3 py-2 text-[12px] flex items-center gap-2">
+      <div className="my-1.5 flex items-center gap-2 text-[11px]">
         <MoraOrb size="xs" state="thinking" />
-        <span className="font-medium text-espresso">Checking for anomalies...</span>
+        <span className="rounded-md bg-black/5 px-2 py-0.5">
+          <ShimmeringText text="Checking for anomalies..." duration={1.5} className="[--color:var(--sage)] [--shimmering-color:var(--espresso)]" />
+        </span>
       </div>
     );
   }
 
   if (!Array.isArray(nudges) || nudges.length === 0) {
     return (
-      <div className="my-2 rounded-xl border border-sage/20 bg-sage/5 p-3 text-[12px] flex items-center gap-2">
+      <div className="my-1.5 text-[12px] flex items-center gap-2 text-muted">
         <span className="material-symbols-outlined text-sage text-[16px]">check_circle</span>
         <span className="font-medium text-espresso">All on track — no unusual gaps detected.</span>
       </div>
@@ -378,18 +407,18 @@ function NudgesUI({ status, result }: { status: string; result: any }) {
   }
 
   const severityColors: Record<string, string> = {
-    info: "border-sage/15 bg-sage/5",
-    warn: "border-clay/20 bg-clay/5",
-    alert: "border-alert-red/20 bg-alert-red/5",
+    info: "bg-sage/5",
+    warn: "bg-clay/5",
+    alert: "bg-alert-red/5",
   };
 
   return (
-    <div className="my-2 space-y-1.5">
-      {nudges.map((n: any, i: number) => (
-        <div key={i} className={`rounded-xl border p-2.5 text-[12px] flex items-center gap-2 ${severityColors[n.severity] ?? "border-muted/15 bg-oat/40"}`}>
-          <span className="material-symbols-outlined text-[16px]">{n.icon ?? "info"}</span>
+    <div className="my-1.5 space-y-1">
+      {nudges.map((n: any) => (
+        <div key={`${n.id ?? n.title ?? "nudge"}:${n.severity ?? "info"}:${n.body ?? ""}`} className={`rounded-md px-2 py-1 text-[12px] flex items-center gap-2 ${severityColors[n.severity] ?? "bg-black/5"}`}>
+          <span className="material-symbols-outlined text-[14px]">{n.icon ?? "info"}</span>
           <div>
-            <span className="font-semibold text-espresso">{n.title}</span>
+            <span className="font-medium text-espresso">{n.title}</span>
             <span className="text-muted ml-1">{n.body}</span>
           </div>
         </div>
@@ -400,48 +429,69 @@ function NudgesUI({ status, result }: { status: string; result: any }) {
 
 const CUSTOM_TOOL_NAMES = ["analyze_patterns", "generate_weekly_digest", "check_nudges"];
 
-const toolUIs = [
+const toolUIEntries = [
   ...READ_TOOLS.filter((t) => !CUSTOM_TOOL_NAMES.includes(t)).map((toolName) =>
-    makeAssistantToolUI({
-      toolName,
-      render: ({ status }) => <ReadToolUI name={toolName} status={status.type} />,
+    ({
+      key: toolName,
+      ToolUI: makeAssistantToolUI({
+        toolName,
+        render: ({ status, args }) => <ReadToolUI name={toolName} status={status.type} args={args} />,
+      }),
     })
   ),
-  makeAssistantToolUI({
-    toolName: "analyze_patterns",
-    render: ({ status, result }) => <PatternAnalysisUI status={status.type} result={result} />,
-  }),
-  makeAssistantToolUI({
-    toolName: "generate_weekly_digest",
-    render: ({ status, result }) => <DigestUI status={status.type} result={result} />,
-  }),
-  makeAssistantToolUI({
-    toolName: "check_nudges",
-    render: ({ status, result }) => <NudgesUI status={status.type} result={result} />,
-  }),
-  makeAssistantToolUI({
-    toolName: "create_event",
-    render: ({ args, status, result }) => (
-      <CreateEventUI args={args} status={status.type} result={result} />
-    ),
-  }),
-  makeAssistantToolUI({
-    toolName: "create_note",
-    render: ({ args, status, result }) => (
-      <CreateEventUI args={{ type: "NOTE", payload: { text: args?.text }, preview: String(args?.text ?? "").slice(0, 60) }} status={status.type} result={result} />
-    ),
-  }),
+  {
+    key: "analyze_patterns",
+    ToolUI: makeAssistantToolUI({
+      toolName: "analyze_patterns",
+      render: ({ status, result }) => <PatternAnalysisUI status={status.type} result={result} />,
+    }),
+  },
+  {
+    key: "generate_weekly_digest",
+    ToolUI: makeAssistantToolUI({
+      toolName: "generate_weekly_digest",
+      render: ({ status, result }) => <DigestUI status={status.type} result={result} />,
+    }),
+  },
+  {
+    key: "check_nudges",
+    ToolUI: makeAssistantToolUI({
+      toolName: "check_nudges",
+      render: ({ status, result }) => <NudgesUI status={status.type} result={result} />,
+    }),
+  },
+  {
+    key: "create_event",
+    ToolUI: makeAssistantToolUI({
+      toolName: "create_event",
+      render: ({ args, status, result }) => (
+        <CreateEventUI args={args} status={status.type} result={result} />
+      ),
+    }),
+  },
+  {
+    key: "create_note",
+    ToolUI: makeAssistantToolUI({
+      toolName: "create_note",
+      render: ({ args, status, result }) => (
+        <CreateEventUI args={{ type: "NOTE", payload: { text: args?.text }, preview: String(args?.text ?? "").slice(0, 60) }} status={status.type} result={result} />
+      ),
+    }),
+  },
   ...["update_event", "delete_event", "create_reminder", "update_reminder", "delete_reminder"].map(
     (toolName) =>
-      makeAssistantToolUI({
-        toolName,
-        render: ({ args, status, result }) => (
-          <WriteToolUI name={toolName} args={args} status={status.type} result={result} />
-        ),
+      ({
+        key: toolName,
+        ToolUI: makeAssistantToolUI({
+          toolName,
+          render: ({ args, status, result }) => (
+            <WriteToolUI name={toolName} args={args} status={status.type} result={result} />
+          ),
+        }),
       })
   ),
 ];
 
 export default function MoraToolUIs() {
-  return <>{toolUIs.map((ToolUI, i) => <ToolUI key={i} />)}</>;
+  return <>{toolUIEntries.map(({ key, ToolUI }) => <ToolUI key={key} />)}</>;
 }

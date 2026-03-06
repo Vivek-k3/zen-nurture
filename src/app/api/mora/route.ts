@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { api } from "../../../../convex/_generated/api";
 import { getToken } from "@/lib/auth";
+import { normalizeEventPayload, normalizeEventType, validateEventPayload } from "../../../../convex/lib/eventPayloads";
 
 type MoraClientContext = {
   pathname?: string;
@@ -17,10 +18,17 @@ type MoraClientContext = {
   timestamp?: string;
   userName?: string;
   userEmail?: string;
+  babyId?: string;
   babyName?: string;
   babyDob?: string;
   babyTimezone?: string;
   familyName?: string;
+};
+
+type DateParts = {
+  year: number;
+  month: number;
+  day: number;
 };
 
 function getConvex(token?: string) {
@@ -64,6 +72,149 @@ function pageCapabilities(pageLabel?: string) {
   }
 }
 
+function parseCalendarDate(input?: string): DateParts | null {
+  if (!input) return null;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(input);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    };
+  }
+
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  };
+}
+
+function getCurrentDateInTimeZone(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+
+  const map = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  ) as Record<string, string>;
+
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function formatCurrentDateTime(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    dateStyle: "long",
+    timeStyle: "short",
+  }).format(now);
+}
+
+function formatBabyAgeForDate(dob: string, currentDate: string) {
+  const birth = parseCalendarDate(dob);
+  const current = parseCalendarDate(currentDate);
+  if (!birth || !current) return null;
+
+  let years = current.year - birth.year;
+  let months = current.month - birth.month;
+  let days = current.day - birth.day;
+
+  if (days < 0) {
+    months--;
+    const previousMonthDays = new Date(
+      Date.UTC(current.year, current.month - 1, 0)
+    ).getUTCDate();
+    days += previousMonthDays;
+  }
+
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  const totalDays = Math.floor(
+    (Date.UTC(current.year, current.month - 1, current.day) -
+      Date.UTC(birth.year, birth.month - 1, birth.day)) /
+      (1000 * 60 * 60 * 24)
+  );
+
+  let display = "Unknown";
+  if (totalDays === 0) {
+    display = "Born today!";
+  } else if (totalDays < 0) {
+    display = `Due in ${Math.abs(totalDays)}d`;
+  } else if (years >= 2) {
+    display = `${years} years old`;
+  } else if (years === 1) {
+    display = `${years} year${months ? `, ${months}mo` : ""} old`;
+  } else if (months >= 1) {
+    display = `${months}mo${days ? `, ${days}d` : ""} old`;
+  } else {
+    display = `${totalDays} day${totalDays !== 1 ? "s" : ""} old`;
+  }
+
+  return {
+    dob,
+    currentDate,
+    totalDays,
+    years,
+    months,
+    days,
+    display,
+  };
+}
+
+function summarizeRangeAggregates(range: Record<string, any>) {
+  const days = Object.values(range ?? {}) as Array<any>;
+
+  const totals = days.reduce(
+    (acc, day) => {
+      acc.feeds.count += day?.feeds?.count ?? 0;
+      acc.feeds.totalMl += day?.feeds?.totalMl ?? 0;
+      acc.diapers.total += day?.diapers?.count ?? day?.diapers?.total ?? 0;
+      acc.diapers.wet += day?.diapers?.wet ?? 0;
+      acc.diapers.dirty += day?.diapers?.dirty ?? 0;
+      acc.diapers.dry += day?.diapers?.dry ?? 0;
+      acc.diapers.mixed += day?.diapers?.mixed ?? 0;
+      acc.sleeps.sessions += day?.sleeps?.sessions ?? 0;
+      acc.sleeps.totalMinutes += day?.sleeps?.totalMin ?? day?.sleeps?.totalMinutes ?? 0;
+      acc.meds.taken += day?.meds?.taken ?? 0;
+      acc.meds.skipped += day?.meds?.skipped ?? 0;
+      return acc;
+    },
+    {
+      feeds: { count: 0, totalMl: 0 },
+      diapers: { total: 0, wet: 0, dirty: 0, dry: 0, mixed: 0 },
+      sleeps: { sessions: 0, totalMinutes: 0 },
+      meds: { taken: 0, skipped: 0 },
+    }
+  );
+
+  const medDenominator = totals.meds.taken + totals.meds.skipped;
+
+  return {
+    feeds: totals.feeds,
+    diapers: totals.diapers,
+    sleeps: {
+      ...totals.sleeps,
+      totalHours: Math.round((totals.sleeps.totalMinutes / 60) * 10) / 10,
+    },
+    meds: {
+      ...totals.meds,
+      adherence: medDenominator > 0 ? Math.round((totals.meds.taken / medDenominator) * 100) : 100,
+    },
+  };
+}
+
 async function queueOrExecuteWrite({
   convex,
   threadId,
@@ -71,6 +222,7 @@ async function queueOrExecuteWrite({
   payload,
   preview,
   latestUserText,
+  babyId,
 }: {
   convex: ConvexHttpClient;
   threadId: string;
@@ -78,6 +230,7 @@ async function queueOrExecuteWrite({
   payload: Record<string, unknown>;
   preview: string;
   latestUserText: string;
+  babyId?: string;
 }) {
   if (!threadId) throw new Error("Missing threadId for Mora action logging");
 
@@ -108,10 +261,47 @@ async function queueOrExecuteWrite({
     return { status: "blocked", reason: `Write scope '${scope}' is not allowed.` };
   }
 
+  const finalPayload =
+    babyId && (actionType === "event.create" || actionType === "note.create" || actionType === "reminder.create")
+      ? { ...payload, babyId }
+      : payload;
+
+  if (actionType === "event.create") {
+    const eventType = normalizeEventType(finalPayload.type);
+    const normalizedPayload = normalizeEventPayload(eventType, finalPayload.payload ?? {});
+    const validationError = validateEventPayload(eventType, normalizedPayload);
+    if (validationError) {
+      return { status: "blocked", reason: validationError };
+    }
+  }
+
+  if (actionType === "event.update") {
+    const eventId = finalPayload.id;
+    if (typeof eventId !== "string") {
+      return { status: "blocked", reason: "Event updates require an event id." };
+    }
+    try {
+      const existing = await convex.query(api.events.getEvent, { id: eventId as any });
+      if (!existing) {
+        return { status: "blocked", reason: "Event not found." };
+      }
+      const normalizedPayload =
+        finalPayload.payload === undefined
+          ? existing.payload
+          : normalizeEventPayload(existing.type, finalPayload.payload);
+      const validationError = validateEventPayload(existing.type, normalizedPayload);
+      if (validationError) {
+        return { status: "blocked", reason: validationError };
+      }
+    } catch {
+      return { status: "blocked", reason: "Unable to validate event update." };
+    }
+  }
+
   const action = await convex.mutation(api.mora.createPendingMoraAction, {
     threadId: threadId as any,
     actionType,
-    payload,
+    payload: finalPayload,
     preview,
     requiresApproval: !settings.yoloMode,
   });
@@ -159,13 +349,25 @@ export async function POST(req: Request) {
   const convex = getConvex(token);
   const latestUserText = getLatestUserText(messages);
 
-  const babyProfile = await convex.query(api.events.getBabyProfile, {});
+  let babyProfile = await convex.query(
+    api.events.getBabyProfile,
+    clientContext.babyId ? { id: clientContext.babyId as any } : {}
+  );
+  if (!babyProfile?._id && clientContext.babyId) {
+    babyProfile = await convex.query(api.events.getBabyProfile, {});
+  }
   const babyId = babyProfile?._id;
+  const babyDob = clientContext.babyDob || babyProfile?.dob;
+  const babyTimeZone = clientContext.babyTimezone || babyProfile?.timezone || "Asia/Kolkata";
+  const now = new Date();
+  const currentDate = getCurrentDateInTimeZone(now, babyTimeZone);
+  const currentDateTime = formatCurrentDateTime(now, babyTimeZone);
+  const babyAge = babyDob ? formatBabyAgeForDate(babyDob, currentDate) : null;
   const recentEvents = babyId
     ? await convex.query(api.events.listEvents, {
         babyId,
         from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        to: new Date().toISOString(),
+        to: now.toISOString(),
         limit: 20,
       } as any)
     : [];
@@ -182,6 +384,7 @@ export async function POST(req: Request) {
     "- Address the user by first name when known. Reference the baby by name.",
     "- When the user requests a data change, use the appropriate write tool — never describe manual steps.",
     "- In YOLO mode, actions execute immediately. In Safe mode, actions require human approval — tell the user you've queued it.",
+    "- For age, DOB, or other date math questions, use the exact current date below or the get_baby_age tool. Never invent today's date.",
     "",
     "## Smart Reminders",
     "- When the user asks about patterns, feeding schedules, or reminders, use analyze_patterns first.",
@@ -199,15 +402,35 @@ export async function POST(req: Request) {
     "- When user asks for a weekly summary/report/digest, use generate_weekly_digest.",
     "- Present the comparison in a friendly, scannable format with highlights and concerns.",
     "",
+    "## Time Windows",
+    "- For 'last 24h', 'past 24 hours', or other rolling-window requests, use get_last_24h_summary.",
+    "- Use get_daily_summary only for calendar-day questions like 'today', 'yesterday', or an explicit YYYY-MM-DD date.",
+    "- If the user says 'last 24h', do not answer from get_daily_summary.",
+    "",
     "## Boundaries",
     "- Never propose unsupported actions (clear all data, caregiver mutations, baby profile mutations).",
     "- Never fabricate data. If a tool returns empty, say so.",
+    "- If a date-based answer looks inconsistent, prefer the computed age context and state the exact date you used.",
+    "",
+    "## Event Write Contracts",
+    "- For FEED_BOTTLE use payload.amountMl, optional payload.contentType, optional payload.formulaName.",
+    "- For FEED_BREAST use payload.durationMin and payload.side.",
+    "- For PUMP use payload.amountMl.",
+    "- For DIAPER use payload.kind, optional payload.texture, optional payload.color, optional payload.blowout, optional payload.rash.",
+    "- For SLEEP use payload.startTs, payload.endTs when known, and optional payload.kind.",
+    "- For MED_DOSE use payload.medicineName, optional payload.doseValue, optional payload.doseUnit, optional payload.outcome.",
+    "- For NOTE use payload.text.",
+    "- For GROWTH use payload.weightKg, payload.heightCm, and/or payload.headCm.",
+    "- If the user gives an alias or different units, convert it into these canonical fields before writing.",
     "",
     "## Current Context",
     `- User: ${clientContext.userName || "Unknown"} (${clientContext.userEmail || "unknown"})`,
     `- Family: ${clientContext.familyName || "Unknown"}`,
-    `- Baby: ${clientContext.babyName || babyProfile?.name || "Unknown"}${clientContext.babyDob ? ` (DOB: ${clientContext.babyDob})` : ""}`,
-    `- Timezone: ${clientContext.babyTimezone || babyProfile?.timezone || "Asia/Kolkata"}`,
+    `- Baby: ${clientContext.babyName || babyProfile?.name || "Unknown"}${babyDob ? ` (DOB: ${babyDob})` : ""}`,
+    `- Timezone: ${babyTimeZone}`,
+    `- Current local date/time: ${currentDateTime} (${babyTimeZone})`,
+    `- Current local date: ${currentDate}`,
+    `- Computed baby age: ${babyAge?.display || "Unknown"}`,
     `- Page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "/"})`,
     `- ${pageCapabilities(clientContext.pageLabel)}`,
     `- Mora settings: enabled=${moraSettings.enabled}, yoloMode=${moraSettings.yoloMode}, allowWrites=${moraSettings.allowWrites}`,
@@ -223,11 +446,61 @@ export async function POST(req: Request) {
     messages: modelMessages,
     stopWhen: stepCountIs(6),
     tools: {
+      get_baby_age: tool({
+        description: "Get the baby's DOB, the exact current local date in the baby's timezone, and the computed age.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
+          const dob = profile?.dob ?? babyDob;
+          const timeZone = profile?.timezone ?? babyTimeZone;
+          const nowForTool = new Date();
+          const date = getCurrentDateInTimeZone(nowForTool, timeZone);
+          const dateTime = formatCurrentDateTime(nowForTool, timeZone);
+          const age = dob ? formatBabyAgeForDate(dob, date) : null;
+
+          return {
+            name: profile?.name ?? clientContext.babyName ?? null,
+            dob: dob ?? null,
+            timeZone,
+            currentDate: date,
+            currentDateTime: dateTime,
+            age: age?.display ?? null,
+            totalDays: age?.totalDays ?? null,
+            years: age?.years ?? null,
+            months: age?.months ?? null,
+            days: age?.days ?? null,
+          };
+        },
+      }),
       get_baby_profile: tool({
         description: "Get the active baby profile and measurement settings.",
         inputSchema: z.object({}),
         execute: async () => {
-          return await convex.query(api.events.getBabyProfile, {});
+          return await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
+        },
+      }),
+      get_last_24h_summary: tool({
+        description: "Get a rolling summary for the last 24 hours ending now. Use this for requests like 'last 24h' or 'past day'.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
+          if (!profile?._id) return null;
+
+          const to = new Date().toISOString();
+          const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const range = await convex.query(api.events.getRangeAggregates, {
+            babyId: profile._id,
+            from,
+            to,
+          } as any);
+
+          return {
+            window: "last_24_hours",
+            from,
+            to,
+            totals: summarizeRangeAggregates(range as Record<string, any>),
+            byDay: range,
+          };
         },
       }),
       get_recent_events: tool({
@@ -238,7 +511,7 @@ export async function POST(req: Request) {
           limit: z.number().int().min(1).max(200).optional(),
         }),
         execute: async ({ hours = 24, type, limit = 50 }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return [];
           const from = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
           return await convex.query(api.events.listEvents, {
@@ -259,7 +532,7 @@ export async function POST(req: Request) {
           limit: z.number().int().min(1).max(200).optional(),
         }),
         execute: async ({ from, to, type, limit = 100 }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return [];
           return await convex.query(api.events.listEvents, {
             babyId: profile._id,
@@ -271,12 +544,12 @@ export async function POST(req: Request) {
         },
       }),
       get_daily_summary: tool({
-        description: "Get aggregate summary for a given date (YYYY-MM-DD), defaults to today.",
+        description: "Get aggregate summary for a calendar date (YYYY-MM-DD), defaults to today. Do not use for rolling last-24h requests.",
         inputSchema: z.object({
           date: z.string().optional(),
         }),
         execute: async ({ date }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return null;
           const day = date ?? new Date().toISOString().split("T")[0];
           return await convex.query(api.events.getDailyAggregates, {
@@ -292,7 +565,7 @@ export async function POST(req: Request) {
           to: z.string(),
         }),
         execute: async ({ from, to }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return null;
           return await convex.query(api.events.getRangeAggregates, {
             babyId: profile._id,
@@ -305,7 +578,7 @@ export async function POST(req: Request) {
         description: "Get reminder rules and upcoming reminders for the active baby.",
         inputSchema: z.object({}),
         execute: async () => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return { rules: [], upcoming: [] };
           const [rules, upcoming] = await Promise.all([
             convex.query(api.events.listReminderRules, { babyId: profile._id } as any),
@@ -320,7 +593,7 @@ export async function POST(req: Request) {
           eventTypes: z.array(z.string()).min(1).max(10),
         }),
         execute: async ({ eventTypes }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return {};
           return await convex.query(api.events.getLastEventsByTypes, {
             babyId: profile._id,
@@ -336,7 +609,7 @@ export async function POST(req: Request) {
           limit: z.number().int().min(1).max(100).optional(),
         }),
         execute: async ({ query, days = 30, limit = 50 }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return [];
           const events = await convex.query(api.events.listEvents, {
             babyId: profile._id,
@@ -355,7 +628,7 @@ export async function POST(req: Request) {
         },
       }),
       create_event: tool({
-        description: "Create a baby event (feed, diaper, sleep, meds, note, growth, pump).",
+        description: "Create a baby event. Canonical payloads: FEED_BOTTLE {amountMl, contentType?, formulaName?}, FEED_BREAST {durationMin, side}, PUMP {amountMl}, DIAPER {kind, texture?, color?, blowout?, rash?}, SLEEP {startTs, endTs?, kind?}, MED_DOSE {medicineName, doseValue?, doseUnit?, outcome?}, NOTE {text}, GROWTH {weightKg?, heightCm?, headCm?}.",
         inputSchema: z.object({
           type: z.string(),
           timestamp: z.string().optional(),
@@ -370,6 +643,7 @@ export async function POST(req: Request) {
             payload: { type, timestamp, payload },
             preview: preview ?? `Create event ${type}`,
             latestUserText,
+            babyId: babyId as string | undefined,
           });
         },
       }),
@@ -423,6 +697,7 @@ export async function POST(req: Request) {
             payload: { text, timestamp },
             preview: `Create note: ${text.slice(0, 80)}`,
             latestUserText,
+            babyId: babyId as string | undefined,
           });
         },
       }),
@@ -444,6 +719,7 @@ export async function POST(req: Request) {
             payload,
             preview: preview ?? `Create reminder: ${payload.title}`,
             latestUserText,
+            babyId: babyId as string | undefined,
           });
         },
       }),
@@ -498,7 +774,7 @@ export async function POST(req: Request) {
           eventTypes: z.array(z.string()).optional(),
         }),
         execute: async ({ days = 7, eventTypes }) => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return { error: "No baby profile" };
 
           const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -593,7 +869,7 @@ export async function POST(req: Request) {
           "Use when user asks 'anything I should know?' or 'is everything on track?'",
         inputSchema: z.object({}),
         execute: async () => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return { nudges: [] };
           return await convex.query(api.nudges.getActiveNudges, {
             babyId: profile._id,
@@ -608,7 +884,7 @@ export async function POST(req: Request) {
           "Use when user asks for a weekly summary, report, or digest.",
         inputSchema: z.object({}),
         execute: async () => {
-          const profile = await convex.query(api.events.getBabyProfile, {});
+          const profile = await convex.query(api.events.getBabyProfile, babyId ? { id: babyId } : {});
           if (!profile?._id) return { error: "No baby profile" };
 
           const comparison = await convex.query(api.digest.getWeeklyComparison, {

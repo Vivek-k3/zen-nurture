@@ -4,7 +4,7 @@
 
 export type Gender = "male" | "female";
 
-type PercentileSet = { p3: number; p15: number; p50: number; p85: number; p97: number };
+export type PercentileSet = { p3: number; p15: number; p50: number; p85: number; p97: number };
 
 function row(p3: number, p15: number, p50: number, p85: number, p97: number): PercentileSet {
   return { p3, p15, p50, p85, p97 };
@@ -196,4 +196,33 @@ export function ageInMonths(dob: string, date: string): number {
   const months = (d.getFullYear() - birth.getFullYear()) * 12 + (d.getMonth() - birth.getMonth());
   const dayFraction = (d.getDate() - birth.getDate()) / 30;
   return Math.max(0, months + dayFraction);
+}
+
+export function interpolatePercentileSet(percentiles: PercentileSet[], month: number): PercentileSet {
+  const low = Math.floor(month);
+  const high = Math.ceil(month);
+
+  if (high >= percentiles.length) {
+    return percentiles[percentiles.length - 1];
+  }
+
+  if (low === high || low < 0) {
+    return percentiles[Math.max(0, Math.min(low, percentiles.length - 1))];
+  }
+
+  const frac = month - low;
+  const a = percentiles[low];
+  const b = percentiles[high];
+
+  return {
+    p3: round(a.p3 + (b.p3 - a.p3) * frac),
+    p15: round(a.p15 + (b.p15 - a.p15) * frac),
+    p50: round(a.p50 + (b.p50 - a.p50) * frac),
+    p85: round(a.p85 + (b.p85 - a.p85) * frac),
+    p97: round(a.p97 + (b.p97 - a.p97) * frac),
+  };
+}
+
+function round(n: number) {
+  return Math.round(n * 10) / 10;
 }

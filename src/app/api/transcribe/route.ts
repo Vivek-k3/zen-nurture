@@ -1,10 +1,17 @@
 import OpenAI from "openai";
+import { getToken } from "@/lib/auth";
 
 const client = new OpenAI();
+const TRANSCRIBE_MODEL = "whisper-1";
 
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
+  }
+
+  const token = await getToken();
+  if (!token) {
+    return Response.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
   try {
@@ -17,7 +24,7 @@ export async function POST(req: Request) {
 
     const transcription = await client.audio.transcriptions.create({
       file: audioFile,
-      model: "whisper-1",
+      model: TRANSCRIBE_MODEL,
       language: "en",
       prompt: "Baby care tracking: bottle feed, breast feed, diaper, sleep, medicine, Similac, Enfamil, Nan, Aptamil, Calpol, paracetamol, vitamin D, iron drops",
     });

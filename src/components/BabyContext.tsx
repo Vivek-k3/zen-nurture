@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
@@ -40,7 +40,6 @@ export function BabyProvider({ children }: { children: ReactNode }) {
   const babies = useQuery(api.events.getBabyProfiles, {}) as BabyProfile[] | undefined;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const autoSelectedRef = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -50,15 +49,26 @@ export function BabyProvider({ children }: { children: ReactNode }) {
 
   const babyList = useMemo(() => babies ?? [], [babies]);
 
-  // Auto-select first baby if none stored
   useEffect(() => {
-    if (!hydrated || autoSelectedRef.current) return;
-    if (selectedId && babyList.some((b) => String(b._id) === selectedId)) return;
-    if (babyList.length > 0) {
-      const firstId = String(babyList[0]._id);
-      setSelectedId(firstId);
-      localStorage.setItem(STORAGE_KEY, firstId);
-      autoSelectedRef.current = true;
+    if (!hydrated) return;
+
+    const hasSelectedBaby =
+      selectedId !== null && babyList.some((baby) => String(baby._id) === selectedId);
+
+    if (hasSelectedBaby) return;
+
+    if (babyList.length === 0) {
+      if (selectedId !== null) {
+        setSelectedId(null);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      return;
+    }
+
+    const fallbackId = String(babyList[0]._id);
+    if (selectedId !== fallbackId) {
+      setSelectedId(fallbackId);
+      localStorage.setItem(STORAGE_KEY, fallbackId);
     }
   }, [hydrated, selectedId, babyList]);
 

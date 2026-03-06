@@ -198,4 +198,14 @@ export default defineSchema({
     .index("by_threadId_createdAt", ["threadId", "createdAt"])
     .index("by_threadId_status_createdAt", ["threadId", "status", "createdAt"])
     .index("by_status", ["status"]),
+
+  moraMetrics: defineTable({
+    babyId: v.optional(v.id("babyProfiles")),
+    eventName: v.string(),
+    pageLabel: v.string(),
+    actionId: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_eventName_createdAt", ["eventName", "createdAt"])
+    .index("by_babyId_createdAt", ["babyId", "createdAt"]),
 });

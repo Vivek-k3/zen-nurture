@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { formatTime, formatTimeSince, isToday } from "@/lib/time";
 import { DataState } from "@/components/DataState";
+import { useBaby } from "@/components/BabyContext";
 import {
   AppSelectTrigger,
   Select,
@@ -117,12 +118,7 @@ export default function RemindersPage() {
     }));
   };
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
-  const babyId = babyProfile?._id;
+  const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
   const reminderRules = useQuery(
     api.events.listReminderRules,
     babyId

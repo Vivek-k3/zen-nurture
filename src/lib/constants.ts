@@ -46,6 +46,108 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   [EVENT_TYPES.VACCINE_DOSE]: "sage",
 };
 
+type ColorClassSet = {
+  text: string;
+  bgLight: string;
+  border: string;
+  borderStrong: string;
+  hoverBorder: string;
+};
+
+const COLOR_CLASS_MAP: Record<string, ColorClassSet> = {
+  sage: {
+    text: "text-sage",
+    bgLight: "bg-sage/10",
+    border: "border-sage/20",
+    borderStrong: "border-sage/40",
+    hoverBorder: "hover:border-sage/30",
+  },
+  clay: {
+    text: "text-clay",
+    bgLight: "bg-clay/10",
+    border: "border-clay/20",
+    borderStrong: "border-clay/40",
+    hoverBorder: "hover:border-clay/30",
+  },
+  night: {
+    text: "text-night",
+    bgLight: "bg-night/10",
+    border: "border-night/20",
+    borderStrong: "border-night/40",
+    hoverBorder: "hover:border-night/30",
+  },
+  "dusty-blue": {
+    text: "text-dusty-blue",
+    bgLight: "bg-dusty-blue/10",
+    border: "border-dusty-blue/20",
+    borderStrong: "border-dusty-blue/40",
+    hoverBorder: "hover:border-dusty-blue/30",
+  },
+  "alert-red": {
+    text: "text-alert-red",
+    bgLight: "bg-alert-red/10",
+    border: "border-alert-red/20",
+    borderStrong: "border-alert-red/40",
+    hoverBorder: "hover:border-alert-red/30",
+  },
+  espresso: {
+    text: "text-espresso",
+    bgLight: "bg-espresso/10",
+    border: "border-espresso/20",
+    borderStrong: "border-espresso/40",
+    hoverBorder: "hover:border-espresso/30",
+  },
+  muted: {
+    text: "text-muted",
+    bgLight: "bg-muted/10",
+    border: "border-muted/20",
+    borderStrong: "border-muted/40",
+    hoverBorder: "hover:border-muted/30",
+  },
+};
+
+export function getColorClasses(color: string): ColorClassSet {
+  return COLOR_CLASS_MAP[color] ?? COLOR_CLASS_MAP.muted;
+}
+
+const EVENT_TYPE_ALIASES: Record<string, string> = {
+  feed_bottle: EVENT_TYPES.FEED_BOTTLE,
+  bottle_feed: EVENT_TYPES.FEED_BOTTLE,
+  bottle: EVENT_TYPES.FEED_BOTTLE,
+  feed_breast: EVENT_TYPES.FEED_BREAST,
+  breast_feed: EVENT_TYPES.FEED_BREAST,
+  breastfeeding: EVENT_TYPES.FEED_BREAST,
+  breast: EVENT_TYPES.FEED_BREAST,
+  pump: EVENT_TYPES.PUMP,
+  pumping: EVENT_TYPES.PUMP,
+  diaper: EVENT_TYPES.DIAPER,
+  nappy: EVENT_TYPES.DIAPER,
+  sleep: EVENT_TYPES.SLEEP,
+  nap: EVENT_TYPES.SLEEP,
+  med_dose: EVENT_TYPES.MED_DOSE,
+  medicine: EVENT_TYPES.MED_DOSE,
+  medication: EVENT_TYPES.MED_DOSE,
+  meds: EVENT_TYPES.MED_DOSE,
+  note: EVENT_TYPES.NOTE,
+  notes: EVENT_TYPES.NOTE,
+  growth: EVENT_TYPES.GROWTH,
+  vaccine_dose: EVENT_TYPES.VACCINE_DOSE,
+  vaccine: EVENT_TYPES.VACCINE_DOSE,
+};
+
+export function normalizeEventType(type?: string | null): string {
+  if (!type) return "";
+  const upper = type.toUpperCase();
+  if (EVENT_TYPE_LABELS[upper]) return upper;
+
+  const normalizedKey = type
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  return EVENT_TYPE_ALIASES[normalizedKey] ?? upper;
+}
+
 export const REMINDER_CATEGORIES = {
   FEED: "feed",
   DIAPER: "diaper",
