@@ -210,13 +210,20 @@ export default function TrendsPage() {
         : null;
 
     const diaperSection = is1d && today
-      ? {
-          total: today.diapers?.total ?? 0,
-          subBreakdown: [["wet", today.diapers?.wet], ["dirty", today.diapers?.dirty]]
+      ? (() => {
+          const diaperBreakdown: Array<[string, number | undefined]> = [
+            ["wet", today.diapers?.wet],
+            ["dirty", today.diapers?.dirty],
+          ];
+
+          return {
+            total: today.diapers?.total ?? 0,
+            subBreakdown: diaperBreakdown
             .filter(([, n]) => (n ?? 0) > 0)
             .map(([k, n]) => `${n} ${k}`)
             .join(", ") || undefined,
-        }
+          };
+        })()
       : {
           total: Math.round((cur.diapers / numDays) * 10) / 10,
           subBreakdown: "per day",

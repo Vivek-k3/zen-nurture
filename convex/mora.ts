@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireAuth, requireBabyAccess, getUserFamilyIds } from "./lib/auth";
+import { normalizeEventPayload, normalizeEventType, validateEventPayload } from "./lib/eventPayloads";
 
 const MORA_SETTINGS_KEY = "mora.config";
 const DEFAULT_ALLOWED_SCOPES = ["events", "reminders", "notes"] as const;
@@ -63,6 +64,13 @@ function inferScope(actionType: string): "events" | "reminders" | "notes" | "unk
   if (actionType.startsWith("reminder.")) return "reminders";
   if (actionType === "note.create") return "notes";
   return "unknown";
+}
+
+function normalizeIsoTimestamp(value: unknown, fallback: string): string {
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed.toISOString();
 }
 
 export const getMoraSettings = query({
@@ -344,24 +352,34 @@ export const executeApprovedMoraAction = mutation({
     if (action.actionType === "event.create") {
       const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
       if (!babyId) throw new Error("No baby profile available");
+      const normalizedTimestamp = normalizeIsoTimestamp(payload.timestamp, now);
+      const normalizedType = normalizeEventType(payload.type);
+      const normalizedPayload = normalizeEventPayload(payload.type, payload.payload ?? {});
+      const validationError = validateEventPayload(normalizedType, normalizedPayload);
+      if (validationError) throw new Error(validationError);
       entityId = await ctx.db.insert("events", {
         babyId,
-        type: payload.type,
-        timestamp: payload.timestamp ?? now,
+        type: normalizedType,
+        timestamp: normalizedTimestamp,
         caregiverId: payload.caregiverId,
-        payload: payload.payload ?? {},
+        payload: normalizedPayload,
         source: "mora",
+        loggedBy: user._id,
+        loggedByName: user.name ?? user.email ?? "Unknown user",
         createdAt: now,
       });
     } else if (action.actionType === "note.create") {
       const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
       if (!babyId) throw new Error("No baby profile available");
+      const normalizedTimestamp = normalizeIsoTimestamp(payload.timestamp, now);
       entityId = await ctx.db.insert("events", {
         babyId,
         type: "NOTE",
-        timestamp: payload.timestamp ?? now,
+        timestamp: normalizedTimestamp,
         payload: { text: payload.text ?? "" },
         source: "mora",
+        loggedBy: user._id,
+        loggedByName: user.name ?? user.email ?? "Unknown user",
         createdAt: now,
       });
     } else if (action.actionType === "event.update") {
@@ -369,10 +387,18 @@ export const executeApprovedMoraAction = mutation({
       const existing = await ctx.db.get(payload.id as Id<"events">);
       if (!existing) throw new Error("Event not found");
       await requireBabyAccess(ctx, existing.babyId, user._id);
+      const normalizedTimestamp = payload.timestamp
+        ? normalizeIsoTimestamp(payload.timestamp, existing.timestamp)
+        : existing.timestamp;
+      const normalizedPayload = payload.payload
+        ? normalizeEventPayload(existing.type, payload.payload)
+        : existing.payload;
+      const validationError = validateEventPayload(existing.type, normalizedPayload);
+      if (validationError) throw new Error(validationError);
       await ctx.db.patch(payload.id, {
-        timestamp: payload.timestamp ?? existing.timestamp,
+        timestamp: normalizedTimestamp,
         caregiverId: payload.caregiverId ?? existing.caregiverId,
-        payload: payload.payload ?? existing.payload,
+        payload: normalizedPayload,
         updatedAt: now,
       });
       entityId = payload.id;
@@ -432,5 +458,25 @@ export const executeApprovedMoraAction = mutation({
     });
 
     return result;
+  },
+});
+
+export const trackMoraMetric = mutation({
+  args: {
+    babyId: v.optional(v.id("babyProfiles")),
+    eventName: v.string(),
+    pageLabel: v.string(),
+    actionId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (args.babyId) {
+      await requireBabyAccess(ctx, args.babyId, user._id);
+    }
+
+    return await ctx.db.insert("moraMetrics", {
+      ...args,
+      createdAt: new Date().toISOString(),
+    });
   },
 });

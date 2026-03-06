@@ -46,6 +46,44 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   [EVENT_TYPES.VACCINE_DOSE]: "sage",
 };
 
+const EVENT_TYPE_ALIASES: Record<string, string> = {
+  feed_bottle: EVENT_TYPES.FEED_BOTTLE,
+  bottle_feed: EVENT_TYPES.FEED_BOTTLE,
+  bottle: EVENT_TYPES.FEED_BOTTLE,
+  feed_breast: EVENT_TYPES.FEED_BREAST,
+  breast_feed: EVENT_TYPES.FEED_BREAST,
+  breastfeeding: EVENT_TYPES.FEED_BREAST,
+  breast: EVENT_TYPES.FEED_BREAST,
+  pump: EVENT_TYPES.PUMP,
+  pumping: EVENT_TYPES.PUMP,
+  diaper: EVENT_TYPES.DIAPER,
+  nappy: EVENT_TYPES.DIAPER,
+  sleep: EVENT_TYPES.SLEEP,
+  nap: EVENT_TYPES.SLEEP,
+  med_dose: EVENT_TYPES.MED_DOSE,
+  medicine: EVENT_TYPES.MED_DOSE,
+  medication: EVENT_TYPES.MED_DOSE,
+  meds: EVENT_TYPES.MED_DOSE,
+  note: EVENT_TYPES.NOTE,
+  notes: EVENT_TYPES.NOTE,
+  growth: EVENT_TYPES.GROWTH,
+  vaccine_dose: EVENT_TYPES.VACCINE_DOSE,
+  vaccine: EVENT_TYPES.VACCINE_DOSE,
+};
+
+export function normalizeEventType(type?: string | null): string {
+  if (!type) return "";
+  const upper = type.toUpperCase();
+  if (EVENT_TYPE_LABELS[upper]) return upper;
+
+  const normalizedKey = type
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  return EVENT_TYPE_ALIASES[normalizedKey] ?? upper;
+}
+
 export const REMINDER_CATEGORIES = {
   FEED: "feed",
   DIAPER: "diaper",

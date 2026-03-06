@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import MediaAttacher from "@/components/MediaAttacher";
 import MilestoneMedia from "@/components/MilestoneMedia";
+import { useBaby } from "@/components/BabyContext";
 import {
   AppSelectTrigger,
   Select,
@@ -108,8 +109,7 @@ export default function MilestonesPage() {
     return () => stopCelebration();
   }, []);
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
-  const babyId = babyProfile?._id;
+  const { activeBaby: babyProfile, activeBabyId: babyId } = useBaby();
   const saved = useQuery(api.milestones.list, babyId ? { babyId } : "skip");
   const achieveMilestone = useMutation(api.milestones.achieve);
   const unachieveMilestone = useMutation(api.milestones.unachieve);

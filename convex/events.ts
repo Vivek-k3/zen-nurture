@@ -8,6 +8,7 @@ import {
   getUserFamilyIds,
   requireBabyAccess,
 } from "./lib/auth";
+import { normalizeEventPayload, normalizeEventType, validateEventPayload } from "./lib/eventPayloads";
 
 const DEFAULT_CAREGIVER_COLORS = [
   "#7C9A82",
@@ -21,7 +22,6 @@ const DEFAULT_CAREGIVER_COLORS = [
 ];
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 function getUtcDayRange(date: string) {
   if (!ISO_DATE_RE.test(date)) {
     throw new Error(`Invalid date format: ${date}`);
@@ -86,15 +86,30 @@ async function getLatestEventForType(
   babyId: Id<"babyProfiles">,
   eventType: string
 ) {
+  const normalizedType = normalizeEventType(eventType);
   const events = await ctx.db
     .query("events")
     .withIndex("by_babyId_type_timestamp", (q) =>
-      q.eq("babyId", babyId).eq("type", eventType)
+      q.eq("babyId", babyId).eq("type", normalizedType)
     )
     .order("desc")
     .take(1);
 
-  return events[0] || null;
+  if (events[0]) {
+    const type = normalizeEventType(events[0].type);
+    return { ...events[0], type, payload: normalizeEventPayload(type, events[0].payload) };
+  }
+
+  const fallback = await ctx.db
+    .query("events")
+    .withIndex("by_babyId_timestamp", (q) => q.eq("babyId", babyId))
+    .order("desc")
+    .take(100);
+
+  const match = fallback.find((event) => normalizeEventType(event.type) === normalizedType);
+  if (!match) return null;
+  const type = normalizeEventType(match.type);
+  return { ...match, type, payload: normalizeEventPayload(type, match.payload) };
 }
 
 export const getBabyProfiles = query({
@@ -305,11 +320,18 @@ export const listEvents = query({
       q = q.filter((q) => q.lte(q.field("timestamp"), args.to!));
     }
     if (args.type) {
-      q = q.filter((q) => q.eq(q.field("type"), args.type!));
+      const normalizedType = normalizeEventType(args.type);
+      q = q.filter((q) => q.or(
+        q.eq(q.field("type"), args.type!),
+        q.eq(q.field("type"), normalizedType)
+      ));
     }
 
     const results = await q.order("desc").take(args.limit || 100);
-    return results;
+    return results.map((event) => {
+      const type = normalizeEventType(event.type);
+      return { ...event, type, payload: normalizeEventPayload(type, event.payload) };
+    });
   },
 });
 
@@ -331,6 +353,25 @@ export const getEventsByDate = query({
       )
       .order("desc")
       .collect();
+  },
+});
+
+export const getEvent = query({
+  args: {
+    id: v.id("events"),
+  },
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    const event = await ctx.db.get(args.id);
+    if (!event) return null;
+    await requireBabyAccess(ctx, event.babyId, user._id);
+    const type = normalizeEventType(event.type);
+    return {
+      ...event,
+      type,
+      payload: normalizeEventPayload(type, event.payload),
+    };
   },
 });
 
@@ -389,25 +430,26 @@ export const getDailyAggregates = query({
       .collect();
 
     const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
-      if (e.type === "FEED_BOTTLE") {
+      const normalizedType = normalizeEventType(e.type);
+      if (normalizedType === "FEED_BOTTLE") {
         if (args.formulaName) return ((e.payload as any)?.formulaName ?? "") === args.formulaName;
         if (args.feedContentType) return ((e.payload as any)?.contentType ?? "formula") === args.feedContentType;
         return true;
       }
-      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
-      if (e.type === "PUMP") return !args.formulaName && !args.feedContentType;
+      if (normalizedType === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      if (normalizedType === "PUMP") return !args.formulaName && !args.feedContentType;
       return false;
     };
     const matchMeds = (e: { type: string; payload?: { medicineName?: string } }) => {
-      if (e.type !== "MED_DOSE") return false;
+      if (normalizeEventType(e.type) !== "MED_DOSE") return false;
       if (args.medicineName) return ((e.payload as any)?.medicineName ?? "") === args.medicineName;
       return true;
     };
 
-    const feeds = events.filter(e => e.type.startsWith("FEED") && matchFeed(e));
-    const diapers = events.filter(e => e.type === "DIAPER");
-    const sleeps = events.filter(e => e.type === "SLEEP");
-    const meds = events.filter(e => e.type === "MED_DOSE" && matchMeds(e));
+    const feeds = events.filter(e => ["FEED_BOTTLE", "FEED_BREAST"].includes(normalizeEventType(e.type)) && matchFeed(e));
+    const diapers = events.filter(e => normalizeEventType(e.type) === "DIAPER");
+    const sleeps = events.filter(e => normalizeEventType(e.type) === "SLEEP");
+    const meds = events.filter(e => normalizeEventType(e.type) === "MED_DOSE" && matchMeds(e));
 
     let totalFeedMl = 0;
     let totalBreastMin = 0;
@@ -426,13 +468,14 @@ export const getDailyAggregates = query({
 
     feeds.forEach(e => {
       const payload = e.payload as any;
-      if (e.type === "FEED_BOTTLE" && payload?.amountMl) {
+      const normalizedType = normalizeEventType(e.type);
+      if (normalizedType === "FEED_BOTTLE" && payload?.amountMl) {
         totalFeedMl += payload.amountMl;
         feedCount++;
-      } else if (e.type === "FEED_BREAST" && payload?.durationMin) {
+      } else if (normalizedType === "FEED_BREAST" && payload?.durationMin) {
         totalBreastMin += payload.durationMin;
         feedCount++;
-      } else if (e.type === "PUMP" && payload?.amountMl) {
+      } else if (normalizedType === "PUMP" && payload?.amountMl) {
         totalFeedMl += payload.amountMl;
       }
     });
@@ -473,7 +516,7 @@ export const getDailyAggregates = query({
       feedCount > 0 && totalFeedMl > 0 ? Math.round(totalFeedMl / feedCount) : 0;
 
     const feedEvents = events
-      .filter((e) => (e.type === "FEED_BOTTLE" || e.type === "FEED_BREAST") && matchFeed(e))
+      .filter((e) => ["FEED_BOTTLE", "FEED_BREAST"].includes(normalizeEventType(e.type)) && matchFeed(e))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     let avgGapMin = 0;
     if (feedEvents.length >= 2) {
@@ -561,8 +604,9 @@ export const getRangeAggregates = query({
       if (hasTypeFilter || hasPhotos || hasNotes) {
         events = events.filter((e) => {
           if (hasPhotos && (e.photoIds?.length ?? 0) > 0) return true;
-          if (hasNotes && (e.type === "NOTE" || (e.payload as { notes?: string })?.notes)) return true;
-          if (hasTypeFilter && flatTypes.has(e.type)) return true;
+          const normalizedType = normalizeEventType(e.type);
+          if (hasNotes && (normalizedType === "NOTE" || (e.payload as { notes?: string })?.notes)) return true;
+          if (hasTypeFilter && flatTypes.has(normalizedType)) return true;
           return false;
         });
       }
@@ -570,17 +614,18 @@ export const getRangeAggregates = query({
 
     const dailyData: Record<string, any> = {};
     const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
-      if (e.type === "FEED_BOTTLE") {
+      const normalizedType = normalizeEventType(e.type);
+      if (normalizedType === "FEED_BOTTLE") {
         if (args.formulaName) return (e.payload?.formulaName ?? "") === args.formulaName;
         if (args.feedContentType) return (e.payload?.contentType ?? "formula") === args.feedContentType;
         return true;
       }
-      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
-      if (e.type === "PUMP") return !args.formulaName && !args.feedContentType;
+      if (normalizedType === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      if (normalizedType === "PUMP") return !args.formulaName && !args.feedContentType;
       return false;
     };
     const matchMeds = (e: { type: string; payload?: { medicineName?: string } }) => {
-      if (e.type !== "MED_DOSE") return false;
+      if (normalizeEventType(e.type) !== "MED_DOSE") return false;
       if (args.medicineName) return (e.payload?.medicineName ?? "") === args.medicineName;
       return true;
     };
@@ -607,15 +652,16 @@ export const getRangeAggregates = query({
       }
 
       const payload = e.payload as any;
+      const normalizedType = normalizeEventType(e.type);
       
-      if (e.type === "FEED_BOTTLE" && payload?.amountMl && matchFeed(e)) {
+      if (normalizedType === "FEED_BOTTLE" && payload?.amountMl && matchFeed(e)) {
         dailyData[date].feeds.count++;
         dailyData[date].feeds.totalMl += payload.amountMl;
-      } else if (e.type === "FEED_BREAST" && matchFeed(e)) {
+      } else if (normalizedType === "FEED_BREAST" && matchFeed(e)) {
         dailyData[date].feeds.count++;
-      } else if (e.type === "PUMP" && payload?.amountMl && matchFeed(e)) {
+      } else if (normalizedType === "PUMP" && payload?.amountMl && matchFeed(e)) {
         dailyData[date].feeds.totalMl += payload.amountMl;
-      } else if (e.type === "DIAPER") {
+      } else if (normalizedType === "DIAPER") {
         dailyData[date].diapers.count++;
         if (payload?.kind === "wet") dailyData[date].diapers.wet++;
         else if (payload?.kind === "dirty") dailyData[date].diapers.dirty++;
@@ -631,12 +677,12 @@ export const getRangeAggregates = query({
         }
         if (payload?.blowout) dailyData[date].diapers.blowoutCount++;
         if (payload?.rash) dailyData[date].diapers.rashCount++;
-      } else if (e.type === "SLEEP" && payload?.startTs && payload?.endTs) {
+      } else if (normalizedType === "SLEEP" && payload?.startTs && payload?.endTs) {
         const start = new Date(payload.startTs).getTime();
         const end = new Date(payload.endTs).getTime();
         dailyData[date].sleeps.totalMin += Math.floor((end - start) / 60000);
         dailyData[date].sleeps.sessions++;
-      } else if (e.type === "MED_DOSE" && matchMeds(e)) {
+      } else if (normalizedType === "MED_DOSE" && matchMeds(e)) {
         if (payload?.outcome === "taken") dailyData[date].meds.taken++;
         else if (payload?.outcome === "skipped") dailyData[date].meds.skipped++;
       }
@@ -672,19 +718,20 @@ export const getTrendsRangeSummary = query({
       .collect();
 
     const matchFeed = (e: { type: string; payload?: { formulaName?: string; contentType?: string } }) => {
-      if (e.type === "FEED_BOTTLE") {
+      const normalizedType = normalizeEventType(e.type);
+      if (normalizedType === "FEED_BOTTLE") {
         if (args.formulaName) return (e.payload?.formulaName ?? "") === args.formulaName;
         if (args.feedContentType) return (e.payload?.contentType ?? "formula") === args.feedContentType;
         return true;
       }
-      if (e.type === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
+      if (normalizedType === "FEED_BREAST") return !args.formulaName && !args.feedContentType;
       return false;
     };
 
     const feedEvents = events
       .filter(
         (e) =>
-          (e.type === "FEED_BOTTLE" || e.type === "FEED_BREAST") && matchFeed(e)
+          ["FEED_BOTTLE", "FEED_BREAST"].includes(normalizeEventType(e.type)) && matchFeed(e)
       )
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
@@ -693,10 +740,11 @@ export const getTrendsRangeSummary = query({
     let avgGapMin = 0;
     for (const e of feedEvents) {
       const p = e.payload as { amountMl?: number; durationMin?: number };
-      if (e.type === "FEED_BOTTLE" && p?.amountMl) {
+      const normalizedType = normalizeEventType(e.type);
+      if (normalizedType === "FEED_BOTTLE" && p?.amountMl) {
         totalMl += p.amountMl;
         count++;
-      } else if (e.type === "FEED_BREAST") {
+      } else if (normalizedType === "FEED_BREAST") {
         count++;
       }
     }
@@ -760,8 +808,13 @@ export const createEvent = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     await requireBabyAccess(ctx, args.babyId, user._id);
+    const normalizedType = normalizeEventType(args.type);
+    const validationError = validateEventPayload(normalizedType, args.payload);
+    if (validationError) throw new Error(validationError);
     const id = await ctx.db.insert("events", {
       ...args,
+      type: normalizedType,
+      payload: normalizeEventPayload(normalizedType, args.payload),
       source: args.source || "manual",
       createdAt: new Date().toISOString(),
       loggedBy: user._id,
@@ -784,8 +837,16 @@ export const updateEvent = mutation({
     if (!event) throw new Error("Event not found");
     await requireBabyAccess(ctx, event.babyId, user._id);
     const { id, ...updates } = args;
+    const normalizedType = normalizeEventType(event.type);
+    const nextPayload =
+      updates.payload === undefined
+        ? event.payload
+        : normalizeEventPayload(normalizedType, updates.payload);
+    const validationError = validateEventPayload(normalizedType, nextPayload);
+    if (validationError) throw new Error(validationError);
     await ctx.db.patch(id, {
       ...updates,
+      payload: nextPayload,
       updatedAt: new Date().toISOString(),
     });
     return id;
@@ -1162,7 +1223,11 @@ export const listTimeline = query({
       q = q.filter((q) => q.eq(q.field("type"), args.type));
     }
 
-    return await q.order("desc").take(args.limit ?? 50);
+    const results = await q.order("desc").take(args.limit ?? 50);
+    return results.map((event) => {
+      const type = normalizeEventType(event.type);
+      return { ...event, type, payload: normalizeEventPayload(type, event.payload) };
+    });
   },
 });
 
@@ -1175,7 +1240,7 @@ export const listGrowthEvents = query({
     const user = await authComponent.safeGetAuthUser(ctx);
     if (!user) return [];
     await requireBabyAccess(ctx, args.babyId, user._id);
-    return await ctx.db
+    const results = await ctx.db
       .query("events")
       .withIndex("by_babyId_type", (q) =>
         q.eq("babyId", args.babyId)
@@ -1183,6 +1248,11 @@ export const listGrowthEvents = query({
       .filter((q) => q.eq(q.field("type"), "GROWTH"))
       .order("asc")
       .take(args.limit ?? 200);
+
+    return results.map((event) => ({
+      ...event,
+      payload: normalizeEventPayload("GROWTH", event.payload),
+    }));
   },
 });
 

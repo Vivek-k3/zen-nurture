@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { CAREGIVER_COLORS } from "@/lib/constants";
-import { authClient } from "@/lib/auth-client";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
+import { formatBabyAge } from "@/lib/time";
 import { Switch } from "@/components/ui/switch";
+import { useBaby } from "@/components/BabyContext";
 import {
   AppSelectTrigger,
   Select,
@@ -18,22 +19,61 @@ import {
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useTheme } from "@/components/ThemeContext";
 
+const UNSPECIFIED_GENDER_VALUE = "unspecified";
+
+type BabyFormState = {
+  name: string;
+  dob: string;
+  gender: string;
+  timezone: string;
+  volumeUnit: string;
+  weightUnit: string;
+  lengthUnit: string;
+};
+
+const EMPTY_BABY_FORM: BabyFormState = {
+  name: "",
+  dob: "",
+  gender: "",
+  timezone: "Asia/Kolkata",
+  volumeUnit: "ml",
+  weightUnit: "kg",
+  lengthUnit: "cm",
+};
+
+function createBabyFormState(baby?: {
+  name?: string;
+  dob?: string;
+  gender?: string;
+  timezone?: string;
+  measurementUnits?: {
+    volume?: string;
+    weight?: string;
+    length?: string;
+  };
+}) {
+  return {
+    name: baby?.name || "",
+    dob: baby?.dob || "",
+    gender: baby?.gender || "",
+    timezone: baby?.timezone || "Asia/Kolkata",
+    volumeUnit: baby?.measurementUnits?.volume || "ml",
+    weightUnit: baby?.measurementUnits?.weight || "kg",
+    lengthUnit: baby?.measurementUnits?.length || "cm",
+  };
+}
+
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
-  const [babyForm, setBabyForm] = useState({
-    name: "",
-    dob: "",
-    gender: "",
-    timezone: "Asia/Kolkata",
-    volumeUnit: "ml",
-    weightUnit: "kg",
-    lengthUnit: "cm",
-  });
+  const [creatingBaby, setCreatingBaby] = useState(false);
+  const [newBabyForm, setNewBabyForm] = useState<BabyFormState>(EMPTY_BABY_FORM);
+  const [editingBabyId, setEditingBabyId] = useState<string | null>(null);
+  const [editingBabyForm, setEditingBabyForm] = useState<BabyFormState>(EMPTY_BABY_FORM);
+  const [expandedBabyId, setExpandedBabyId] = useState<string | null>(null);
   const [caregiverForm, setCaregiverForm] = useState({
     displayName: "",
     color: CAREGIVER_COLORS[0],
   });
-  const [isEditing, setIsEditing] = useState(false);
   const [moraSaving, setMoraSaving] = useState<string | null>(null);
   const [familyName, setFamilyName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -43,12 +83,12 @@ export default function SettingsPage() {
   const ensuredOwnerCaregiverForBaby = useRef<string | null>(null);
   const push = usePushNotifications();
   const { theme, setTheme } = useTheme();
+  const { babies, activeBaby, activeBabyId, switchBaby, isLoading: babiesLoading } = useBaby();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const { data: session } = authClient.useSession();
   const families = useQuery(api.families.listMyFamilies, {});
   const currentFamily = families?.[0];
   const familyId = currentFamily?._id;
@@ -63,10 +103,14 @@ export default function SettingsPage() {
   );
   const myInvitations = useQuery(api.families.listMyInvitations, {});
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
-  const babyId = babyProfile?._id;
-  const exportDataQuery = useQuery(api.events.exportBabyData, babyId ? { babyId } : "skip");
-  const caregivers = useQuery(api.events.listCaregivers, babyId ? { babyId } : "skip");
+  const exportDataQuery = useQuery(
+    api.events.exportBabyData,
+    activeBabyId ? { babyId: activeBabyId } : "skip"
+  );
+  const caregivers = useQuery(
+    api.events.listCaregivers,
+    activeBabyId ? { babyId: activeBabyId } : "skip"
+  );
 
   const createFamily = useMutation(api.families.createFamily);
   const inviteCaregiver = useMutation(api.families.inviteCaregiver);
@@ -85,48 +129,41 @@ export default function SettingsPage() {
   const updateMoraSettings = useMutation(api.mora.updateMoraSettings);
 
   useEffect(() => {
-    if (babyProfile) {
-      const nextForm = {
-        name: babyProfile.name || "",
-        dob: babyProfile.dob || "",
-        gender: babyProfile.gender || "",
-        timezone: babyProfile.timezone || "Asia/Kolkata",
-        volumeUnit: babyProfile.measurementUnits?.volume || "ml",
-        weightUnit: babyProfile.measurementUnits?.weight || "kg",
-        lengthUnit: babyProfile.measurementUnits?.length || "cm",
-      };
-
-      setBabyForm((prev) => {
-        if (
-          prev.name === nextForm.name &&
-          prev.dob === nextForm.dob &&
-          prev.gender === nextForm.gender &&
-          prev.timezone === nextForm.timezone &&
-          prev.volumeUnit === nextForm.volumeUnit &&
-          prev.weightUnit === nextForm.weightUnit &&
-          prev.lengthUnit === nextForm.lengthUnit
-        ) {
-          return prev;
-        }
-        return nextForm;
-      });
-    }
-  }, [babyProfile]);
+    if (!activeBabyId) return;
+    setExpandedBabyId(String(activeBabyId));
+  }, [activeBabyId]);
 
   useEffect(() => {
-    if (!babyId) {
+    if (babies.length === 0) {
+      setExpandedBabyId(null);
+      setEditingBabyId(null);
+      return;
+    }
+
+    if (
+      expandedBabyId &&
+      babies.some((baby) => String(baby._id) === expandedBabyId)
+    ) {
+      return;
+    }
+
+    setExpandedBabyId(activeBabyId ? String(activeBabyId) : String(babies[0]._id));
+  }, [babies, expandedBabyId, activeBabyId]);
+
+  useEffect(() => {
+    if (!activeBabyId) {
       ensuredOwnerCaregiverForBaby.current = null;
       return;
     }
 
-    const babyKey = String(babyId);
+    const babyKey = String(activeBabyId);
     if (ensuredOwnerCaregiverForBaby.current === babyKey) return;
 
     ensuredOwnerCaregiverForBaby.current = babyKey;
-    void ensureOwnerCaregiver({ babyId }).catch(() => {
+    void ensureOwnerCaregiver({ babyId: activeBabyId }).catch(() => {
       ensuredOwnerCaregiverForBaby.current = null;
     });
-  }, [babyId, ensureOwnerCaregiver]);
+  }, [activeBabyId, ensureOwnerCaregiver]);
 
   useEffect(() => {
     if (!caregivers || caregiverForm.displayName) return;
@@ -175,42 +212,66 @@ export default function SettingsPage() {
     }
   };
 
+  const handleStartEditing = (baby: (typeof babies)[number]) => {
+    setEditingBabyId(String(baby._id));
+    setEditingBabyForm(createBabyFormState(baby));
+    setExpandedBabyId(String(baby._id));
+  };
+
+  const handleCancelEditing = () => {
+    setEditingBabyId(null);
+    setEditingBabyForm(EMPTY_BABY_FORM);
+  };
+
   const handleSaveBaby = async () => {
-    if (!babyForm.name || !babyForm.dob) return;
+    if (!editingBabyId || !editingBabyForm.name || !editingBabyForm.dob) return;
 
-    const measurementUnits = {
-      volume: babyForm.volumeUnit,
-      weight: babyForm.weightUnit,
-      length: babyForm.lengthUnit,
-    };
+    const targetBaby = babies.find((baby) => String(baby._id) === editingBabyId);
+    if (!targetBaby) return;
 
-    if (babyProfile?._id) {
-      await updateBabyProfile({
-        id: babyProfile._id,
-        name: babyForm.name,
-        dob: babyForm.dob,
-        gender: babyForm.gender || undefined,
-        timezone: babyForm.timezone,
-        measurementUnits,
-      });
-    } else if (familyId) {
-      await createBabyProfile({
-        familyId,
-        name: babyForm.name,
-        dob: babyForm.dob,
-        gender: babyForm.gender || undefined,
-        timezone: babyForm.timezone,
-        measurementUnits,
-      });
-    }
-    setIsEditing(false);
+    await updateBabyProfile({
+      id: targetBaby._id,
+      name: editingBabyForm.name,
+      dob: editingBabyForm.dob,
+      gender: editingBabyForm.gender || undefined,
+      timezone: editingBabyForm.timezone,
+      measurementUnits: {
+        volume: editingBabyForm.volumeUnit,
+        weight: editingBabyForm.weightUnit,
+        length: editingBabyForm.lengthUnit,
+      },
+    });
+
+    setEditingBabyId(null);
+    setEditingBabyForm(EMPTY_BABY_FORM);
+  };
+
+  const handleCreateBaby = async () => {
+    if (!familyId || !newBabyForm.name || !newBabyForm.dob) return;
+
+    const id = await createBabyProfile({
+      familyId,
+      name: newBabyForm.name,
+      dob: newBabyForm.dob,
+      gender: newBabyForm.gender || undefined,
+      timezone: newBabyForm.timezone,
+      measurementUnits: {
+        volume: newBabyForm.volumeUnit,
+        weight: newBabyForm.weightUnit,
+        length: newBabyForm.lengthUnit,
+      },
+    });
+
+    setCreatingBaby(false);
+    setNewBabyForm(EMPTY_BABY_FORM);
+    switchBaby(id);
   };
 
   const handleAddCaregiver = async () => {
-    if (!babyProfile?._id || !caregiverForm.displayName) return;
+    if (!activeBabyId || !caregiverForm.displayName) return;
 
     await createCaregiver({
-      babyId: babyProfile._id,
+      babyId: activeBabyId,
       displayName: caregiverForm.displayName,
       color: caregiverForm.color,
     });
@@ -222,23 +283,22 @@ export default function SettingsPage() {
   };
 
   const handleExport = async () => {
-    if (!exportDataQuery) return;
+    if (!exportDataQuery || !activeBaby) return;
 
-    const data = exportDataQuery;
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(exportDataQuery, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `zen-nurture-export-${new Date().toISOString().split("T")[0]}.json`;
+    a.download = `zen-nurture-${activeBaby.name.toLowerCase().replace(/\s+/g, "-")}-export-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleClearData = async () => {
-    if (!babyProfile?._id) return;
+    if (!activeBabyId || !activeBaby) return;
 
-    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
-      await clearData({ babyId: babyProfile._id });
+    if (confirm(`Clear all tracked data for ${activeBaby.name}? This cannot be undone.`)) {
+      await clearData({ babyId: activeBabyId });
       window.location.reload();
     }
   };
@@ -260,11 +320,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 lg:p-8 max-w-2xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-serif font-bold text-espresso mb-6">Settings</h1>
 
       <div className="space-y-6">
-        {/* Pending Invitations */}
         {myInvitations && myInvitations.length > 0 && (
           <section className="bg-sage/5 rounded-[20px] p-6 shadow-sm border border-sage/20">
             <h2 className="text-lg font-bold text-espresso mb-4">
@@ -300,7 +359,6 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* Family Section */}
         <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
           <h2 className="text-lg font-bold text-espresso mb-4">Family</h2>
 
@@ -347,7 +405,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Family Members */}
               <div className="pt-3 border-t border-muted/10">
                 <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-3">Members</h3>
                 <div className="space-y-2">
@@ -371,7 +428,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Invite Caregiver */}
               {["owner", "admin"].includes(currentFamily.role) && (
                 <div className="pt-3 border-t border-muted/10">
                   <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-3">Invite Caregiver</h3>
@@ -411,188 +467,407 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* Baby Profile */}
         <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-espresso">Baby Profile</h2>
-            {!isEditing && babyProfile && (
-              <div className="flex items-center gap-3">
-                <Link href="/add-baby" className="text-sage font-medium hover:underline">
-                  Add another baby
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="text-sage font-medium hover:underline"
-                >
-                  Edit
-                </button>
-              </div>
+            <div>
+              <h2 className="text-lg font-bold text-espresso">Baby Profiles</h2>
+              <p className="text-sm text-muted mt-1">
+                One active baby drives KPIs, reminders, milestones, and Mora on this device.
+              </p>
+            </div>
+            {babies.length > 0 && (
+              <Link href="/add-baby" className="text-sage font-medium hover:underline">
+                Add another baby
+              </Link>
             )}
           </div>
 
-          {babyProfile || isEditing ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="baby-name" className="text-xs font-bold text-muted uppercase tracking-wider">Name</label>
-                  <input
-                    id="baby-name"
-                    type="text"
-                    value={babyForm.name}
-                    onChange={(e) => setBabyForm({ ...babyForm, name: e.target.value })}
-                    disabled={!isEditing}
-                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="baby-dob" className="text-xs font-bold text-muted uppercase tracking-wider">Date of Birth</label>
-                  <input
-                    id="baby-dob"
-                    type="date"
-                    value={babyForm.dob}
-                    onChange={(e) => setBabyForm({ ...babyForm, dob: e.target.value })}
-                    disabled={!isEditing}
-                    className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
-                  <Select
-                    value={babyForm.gender}
-                    onValueChange={(v) => setBabyForm({ ...babyForm, gender: v })}
-                    disabled={!isEditing}
-                  >
-                    <AppSelectTrigger id="baby-gender">
-                      <SelectValue placeholder="Not specified" />
-                    </AppSelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Not specified</SelectItem>
-                      <SelectItem value="baby-boy">Baby Boy</SelectItem>
-                      <SelectItem value="baby-girl">Baby Girl</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="baby-timezone" className="text-xs font-bold text-muted uppercase tracking-wider">Timezone</label>
-                  <Select
-                    value={babyForm.timezone}
-                    onValueChange={(v) => setBabyForm({ ...babyForm, timezone: v })}
-                    disabled={!isEditing}
-                  >
-                    <AppSelectTrigger id="baby-timezone">
-                      <SelectValue />
-                    </AppSelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Asia/Kolkata">Asia/Kolkata</SelectItem>
-                      <SelectItem value="Asia/Mumbai">Asia/Mumbai</SelectItem>
-                      <SelectItem value="UTC">UTC</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-muted/10">
-                <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-3">Measurement Units</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label htmlFor="baby-volume-unit" className="text-xs text-muted">Volume</label>
-                    <Select
-                      value={babyForm.volumeUnit}
-                      onValueChange={(v) => setBabyForm({ ...babyForm, volumeUnit: v })}
-                      disabled={!isEditing}
-                    >
-                      <AppSelectTrigger id="baby-volume-unit">
-                        <SelectValue />
-                      </AppSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ml">ml</SelectItem>
-                        <SelectItem value="oz">oz</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="baby-weight-unit" className="text-xs text-muted">Weight</label>
-                    <Select
-                      value={babyForm.weightUnit}
-                      onValueChange={(v) => setBabyForm({ ...babyForm, weightUnit: v })}
-                      disabled={!isEditing}
-                    >
-                      <AppSelectTrigger id="baby-weight-unit">
-                        <SelectValue />
-                      </AppSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kg">kg</SelectItem>
-                        <SelectItem value="lb">lb</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="baby-length-unit" className="text-xs text-muted">Length</label>
-                    <Select
-                      value={babyForm.lengthUnit}
-                      onValueChange={(v) => setBabyForm({ ...babyForm, lengthUnit: v })}
-                      disabled={!isEditing}
-                    >
-                      <AppSelectTrigger id="baby-length-unit">
-                        <SelectValue />
-                      </AppSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cm">cm</SelectItem>
-                        <SelectItem value="in">in</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {isEditing && (
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveBaby}
-                    disabled={!familyId}
-                    className="flex-1 py-3 rounded-xl bg-sage text-white font-bold hover:bg-sage/90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              )}
+          {babiesLoading ? (
+            <div className="rounded-2xl border border-muted/10 bg-oat/30 px-4 py-6 text-sm text-muted">
+              Loading baby profiles...
             </div>
-          ) : (
+          ) : babies.length === 0 ? (
             <div className="text-center py-8">
               <span className="material-symbols-outlined text-5xl text-sage mb-4">child_friendly</span>
               <h3 className="text-lg font-bold text-espresso mb-2">Add your baby</h3>
               <p className="text-muted mb-4">
                 {familyId ? "Create a profile to start tracking" : "Create a family first, then add a baby"}
               </p>
-              {familyId && (
+              {familyId && !creatingBaby && (
                 <button
                   type="button"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => setCreatingBaby(true)}
                   className="inline-flex items-center gap-2 bg-sage text-white px-6 py-3 rounded-full font-bold hover:bg-sage/90"
                 >
                   <span className="material-symbols-outlined">add</span>
                   Add Baby
                 </button>
               )}
+
+              {creatingBaby && (
+                <div className="mt-6 rounded-[20px] border border-muted/10 bg-oat/30 p-5 text-left max-w-2xl mx-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-name" className="text-xs font-bold text-muted uppercase tracking-wider">Name</label>
+                      <input
+                        id="new-baby-name"
+                        type="text"
+                        value={newBabyForm.name}
+                        onChange={(e) => setNewBabyForm((prev) => ({ ...prev, name: e.target.value }))}
+                        className="w-full p-3 rounded-xl bg-white border border-muted/10 text-espresso font-medium"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-dob" className="text-xs font-bold text-muted uppercase tracking-wider">Date of Birth</label>
+                      <input
+                        id="new-baby-dob"
+                        type="date"
+                        value={newBabyForm.dob}
+                        onChange={(e) => setNewBabyForm((prev) => ({ ...prev, dob: e.target.value }))}
+                        className="w-full p-3 rounded-xl bg-white border border-muted/10 text-espresso font-medium"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
+                      <Select
+                        value={newBabyForm.gender || UNSPECIFIED_GENDER_VALUE}
+                        onValueChange={(value) =>
+                          setNewBabyForm((prev) => ({
+                            ...prev,
+                            gender: value === UNSPECIFIED_GENDER_VALUE ? "" : value,
+                          }))
+                        }
+                      >
+                        <AppSelectTrigger id="new-baby-gender">
+                          <SelectValue placeholder="Not specified" />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNSPECIFIED_GENDER_VALUE}>Not specified</SelectItem>
+                          <SelectItem value="baby-boy">Baby Boy</SelectItem>
+                          <SelectItem value="baby-girl">Baby Girl</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-timezone" className="text-xs font-bold text-muted uppercase tracking-wider">Timezone</label>
+                      <Select
+                        value={newBabyForm.timezone}
+                        onValueChange={(value) => setNewBabyForm((prev) => ({ ...prev, timezone: value }))}
+                      >
+                        <AppSelectTrigger id="new-baby-timezone">
+                          <SelectValue />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Asia/Kolkata">Asia/Kolkata</SelectItem>
+                          <SelectItem value="Asia/Mumbai">Asia/Mumbai</SelectItem>
+                          <SelectItem value="UTC">UTC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 mt-4">
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-volume-unit" className="text-xs text-muted">Volume</label>
+                      <Select
+                        value={newBabyForm.volumeUnit}
+                        onValueChange={(value) => setNewBabyForm((prev) => ({ ...prev, volumeUnit: value }))}
+                      >
+                        <AppSelectTrigger id="new-baby-volume-unit">
+                          <SelectValue />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ml">ml</SelectItem>
+                          <SelectItem value="oz">oz</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-weight-unit" className="text-xs text-muted">Weight</label>
+                      <Select
+                        value={newBabyForm.weightUnit}
+                        onValueChange={(value) => setNewBabyForm((prev) => ({ ...prev, weightUnit: value }))}
+                      >
+                        <AppSelectTrigger id="new-baby-weight-unit">
+                          <SelectValue />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="lb">lb</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="new-baby-length-unit" className="text-xs text-muted">Length</label>
+                      <Select
+                        value={newBabyForm.lengthUnit}
+                        onValueChange={(value) => setNewBabyForm((prev) => ({ ...prev, lengthUnit: value }))}
+                      >
+                        <AppSelectTrigger id="new-baby-length-unit">
+                          <SelectValue />
+                        </AppSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="in">in</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatingBaby(false);
+                        setNewBabyForm(EMPTY_BABY_FORM);
+                      }}
+                      className="flex-1 py-3 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateBaby}
+                      className="flex-1 py-3 rounded-xl bg-sage text-white font-bold hover:bg-sage/90"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {babies.map((baby) => {
+                const babyId = String(baby._id);
+                const isActive = babyId === String(activeBabyId ?? "");
+                const isExpanded = babyId === expandedBabyId;
+                const isEditing = babyId === editingBabyId;
+                const formState = isEditing ? editingBabyForm : createBabyFormState(baby);
+
+                return (
+                  <div
+                    key={babyId}
+                    className={`rounded-[20px] border transition-colors ${
+                      isActive ? "border-sage/30 bg-sage/5" : "border-muted/10 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 p-4 md:p-5">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedBabyId((prev) => (prev === babyId ? null : babyId))}
+                        className="flex flex-1 items-center gap-3 text-left"
+                      >
+                        <div className={`h-12 w-12 rounded-2xl flex items-center justify-center text-sm font-bold ${
+                          isActive ? "bg-sage text-white" : "bg-oat text-espresso"
+                        }`}>
+                          {baby.name?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-semibold text-espresso truncate">{baby.name}</h3>
+                            {isActive && (
+                              <span className="rounded-full bg-sage text-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted mt-1">
+                            {baby.dob ? formatBabyAge(baby.dob) : "DOB missing"} · {baby.timezone || "Asia/Kolkata"}
+                          </p>
+                        </div>
+                        <span className="material-symbols-outlined text-muted">
+                          {isExpanded ? "expand_less" : "expand_more"}
+                        </span>
+                      </button>
+
+                      {!isActive && (
+                        <button
+                          type="button"
+                          onClick={() => switchBaby(baby._id)}
+                          className="shrink-0 px-3 py-2 rounded-xl border border-sage/20 text-sage text-sm font-bold hover:bg-sage/5"
+                        >
+                          Make active
+                        </button>
+                      )}
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-black/5 px-4 pb-4 pt-5 md:px-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label htmlFor={`baby-name-${babyId}`} className="text-xs font-bold text-muted uppercase tracking-wider">Name</label>
+                            <input
+                              id={`baby-name-${babyId}`}
+                              type="text"
+                              value={formState.name}
+                              onChange={(e) => setEditingBabyForm((prev) => ({ ...prev, name: e.target.value }))}
+                              disabled={!isEditing}
+                              className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor={`baby-dob-${babyId}`} className="text-xs font-bold text-muted uppercase tracking-wider">Date of Birth</label>
+                            <input
+                              id={`baby-dob-${babyId}`}
+                              type="date"
+                              value={formState.dob}
+                              onChange={(e) => setEditingBabyForm((prev) => ({ ...prev, dob: e.target.value }))}
+                              disabled={!isEditing}
+                              className="w-full p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso font-medium disabled:opacity-60"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor={`baby-gender-${babyId}`} className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
+                            <Select
+                              value={formState.gender || UNSPECIFIED_GENDER_VALUE}
+                              onValueChange={(value) =>
+                                setEditingBabyForm((prev) => ({
+                                  ...prev,
+                                  gender: value === UNSPECIFIED_GENDER_VALUE ? "" : value,
+                                }))
+                              }
+                              disabled={!isEditing}
+                            >
+                              <AppSelectTrigger id={`baby-gender-${babyId}`}>
+                                <SelectValue placeholder="Not specified" />
+                              </AppSelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNSPECIFIED_GENDER_VALUE}>Not specified</SelectItem>
+                                <SelectItem value="baby-boy">Baby Boy</SelectItem>
+                                <SelectItem value="baby-girl">Baby Girl</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor={`baby-timezone-${babyId}`} className="text-xs font-bold text-muted uppercase tracking-wider">Timezone</label>
+                            <Select
+                              value={formState.timezone}
+                              onValueChange={(value) => setEditingBabyForm((prev) => ({ ...prev, timezone: value }))}
+                              disabled={!isEditing}
+                            >
+                              <AppSelectTrigger id={`baby-timezone-${babyId}`}>
+                                <SelectValue />
+                              </AppSelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Asia/Kolkata">Asia/Kolkata</SelectItem>
+                                <SelectItem value="Asia/Mumbai">Asia/Mumbai</SelectItem>
+                                <SelectItem value="UTC">UTC</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-muted/10 mt-4">
+                          <h4 className="text-sm font-bold text-muted uppercase tracking-wider mb-3">Measurement Units</h4>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <label htmlFor={`baby-volume-unit-${babyId}`} className="text-xs text-muted">Volume</label>
+                              <Select
+                                value={formState.volumeUnit}
+                                onValueChange={(value) => setEditingBabyForm((prev) => ({ ...prev, volumeUnit: value }))}
+                                disabled={!isEditing}
+                              >
+                                <AppSelectTrigger id={`baby-volume-unit-${babyId}`}>
+                                  <SelectValue />
+                                </AppSelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ml">ml</SelectItem>
+                                  <SelectItem value="oz">oz</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label htmlFor={`baby-weight-unit-${babyId}`} className="text-xs text-muted">Weight</label>
+                              <Select
+                                value={formState.weightUnit}
+                                onValueChange={(value) => setEditingBabyForm((prev) => ({ ...prev, weightUnit: value }))}
+                                disabled={!isEditing}
+                              >
+                                <AppSelectTrigger id={`baby-weight-unit-${babyId}`}>
+                                  <SelectValue />
+                                </AppSelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="kg">kg</SelectItem>
+                                  <SelectItem value="lb">lb</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label htmlFor={`baby-length-unit-${babyId}`} className="text-xs text-muted">Length</label>
+                              <Select
+                                value={formState.lengthUnit}
+                                onValueChange={(value) => setEditingBabyForm((prev) => ({ ...prev, lengthUnit: value }))}
+                                disabled={!isEditing}
+                              >
+                                <AppSelectTrigger id={`baby-length-unit-${babyId}`}>
+                                  <SelectValue />
+                                </AppSelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cm">cm</SelectItem>
+                                  <SelectItem value="in">in</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm text-muted">
+                            {isActive
+                              ? "This baby is currently driving KPIs, reminders, milestones, and Mora."
+                              : "Make this baby active to use it across KPIs, Mora, caregivers, and exports."}
+                          </p>
+
+                          {isEditing ? (
+                            <div className="flex gap-3">
+                              <button
+                                type="button"
+                                onClick={handleCancelEditing}
+                                className="px-4 py-2 rounded-xl border border-muted/20 text-muted font-bold hover:bg-muted/5"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveBaby}
+                                className="px-4 py-2 rounded-xl bg-sage text-white font-bold hover:bg-sage/90"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditing(baby)}
+                              className="px-4 py-2 rounded-xl text-sage font-bold hover:bg-sage/5"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
 
-        {babyProfile && (
+        {activeBaby && (
           <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-            <h2 className="text-lg font-bold text-espresso mb-4">Caregivers</h2>
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-espresso">Caregivers</h2>
+                <p className="text-sm text-muted mt-1">
+                  Managing caregivers for <span className="font-semibold text-espresso">{activeBaby.name}</span>.
+                </p>
+              </div>
+              <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-sage">
+                Active baby
+              </span>
+            </div>
 
             <div className="space-y-3 mb-4">
               {caregivers?.map((caregiver: any) => (
@@ -630,12 +905,12 @@ export default function SettingsPage() {
                 type="text"
                 value={caregiverForm.displayName}
                 onChange={(e) => setCaregiverForm({ ...caregiverForm, displayName: e.target.value })}
-                placeholder="Caregiver name"
+                placeholder={`Add caregiver for ${activeBaby.name}`}
                 className="flex-1 p-3 rounded-xl bg-oat/50 border border-muted/10 text-espresso"
               />
               <Select
                 value={caregiverForm.color}
-                onValueChange={(v) => setCaregiverForm({ ...caregiverForm, color: v })}
+                onValueChange={(value) => setCaregiverForm({ ...caregiverForm, color: value })}
               >
                 <AppSelectTrigger className="w-auto min-w-[4rem] shrink-0">
                   <SelectValue />
@@ -663,9 +938,19 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {babyProfile && (
+        {activeBaby && (
           <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
-            <h2 className="text-lg font-bold text-espresso mb-4">Data</h2>
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-espresso">Data</h2>
+                <p className="text-sm text-muted mt-1">
+                  Export or clear data for <span className="font-semibold text-espresso">{activeBaby.name}</span>.
+                </p>
+              </div>
+              <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-sage">
+                Active baby
+              </span>
+            </div>
 
             <div className="space-y-3">
               <button
@@ -695,7 +980,6 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* Appearance */}
         <section className="bg-white rounded-[20px] p-6 shadow-sm border border-muted/10">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
@@ -824,7 +1108,7 @@ export default function SettingsPage() {
                 <Switch
                   checked={item.value}
                   disabled={moraSaving !== null}
-                  onCheckedChange={(v) => patchMoraSetting(item.key as any, v)}
+                  onCheckedChange={(value) => patchMoraSetting(item.key as any, value)}
                 />
               </div>
             ))}
@@ -842,9 +1126,6 @@ export default function SettingsPage() {
                 </span>
               ))}
             </div>
-            {/* <p className="text-[11px] text-muted">
-              PIN / caregiver role controls are planned for a later version.
-            </p> */}
           </div>
         </section>
 

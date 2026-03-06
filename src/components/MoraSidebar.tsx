@@ -4,10 +4,11 @@ import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { useBaby } from "@/components/BabyContext";
 import { api } from "../../convex/_generated/api";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
 import { useTour } from "@/components/ui/tour";
 import MoraOrb from "@/components/MoraOrb";
@@ -58,14 +59,17 @@ function MoraRuntimeProvider({
   children,
   pathname,
   sessionKey,
+  activeBabyId,
+  activeBaby,
 }: {
   children: React.ReactNode;
   pathname: string;
   sessionKey: number;
+  activeBabyId: string | null;
+  activeBaby: { name?: string; dob?: string; timezone?: string } | null;
 }) {
   const pageLabel = getPageLabel(pathname);
   const { data: session } = authClient.useSession();
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
   const families = useQuery(api.families.listMyFamilies, {});
   const familyName = families?.[0]?.name;
 
@@ -82,7 +86,9 @@ function MoraRuntimeProvider({
         if (prevThreadRef.current) {
           await closeThread({ threadId: prevThreadRef.current as any });
         }
-        const thread = await createThread({ babyId: babyProfile?._id } as any);
+        const thread = await createThread(
+          activeBabyId ? ({ babyId: activeBabyId as any } as any) : ({} as any)
+        );
         if (active && thread?._id) {
           setThreadId(thread._id);
           prevThreadRef.current = thread._id;
@@ -90,7 +96,7 @@ function MoraRuntimeProvider({
       } catch {}
     })();
     return () => { active = false; };
-  }, [sessionKey, babyProfile?._id]);
+  }, [sessionKey, activeBabyId]);
 
   const transport = useMemo(
     () =>
@@ -104,24 +110,39 @@ function MoraRuntimeProvider({
             timestamp: new Date().toISOString(),
             userName: session?.user?.name ?? undefined,
             userEmail: session?.user?.email ?? undefined,
-            babyName: babyProfile?.name ?? undefined,
-            babyDob: babyProfile?.dob ?? undefined,
-            babyTimezone: babyProfile?.timezone ?? undefined,
+            babyId: activeBabyId ?? undefined,
+            babyName: activeBaby?.name ?? undefined,
+            babyDob: activeBaby?.dob ?? undefined,
+            babyTimezone: activeBaby?.timezone ?? undefined,
             familyName: familyName ?? undefined,
           },
         },
       }),
-    [pathname, pageLabel, sessionKey, threadId]
+    [pathname, pageLabel, sessionKey, threadId, activeBabyId, activeBaby?.name, activeBaby?.dob, activeBaby?.timezone, session?.user?.name, session?.user?.email, familyName]
   );
 
-  const runtime = useChatRuntime({ transport });
+  if (!threadId) {
+    return null;
+  }
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <MoraRuntimeSession key={`${sessionKey}:${threadId}`} transport={transport}>
       <MoraToolUIs />
       {children}
-    </AssistantRuntimeProvider>
+    </MoraRuntimeSession>
   );
+}
+
+function MoraRuntimeSession({
+  transport,
+  children,
+}: {
+  transport: DefaultChatTransport<UIMessage>;
+  children: React.ReactNode;
+}) {
+  const runtime = useChatRuntime({ transport });
+
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
 
 export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
@@ -130,6 +151,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const settings = useQuery(api.mora.getMoraSettings, {});
   const [sessionKey, setSessionKey] = useState(0);
+  const { activeBaby, activeBabyId } = useBaby();
 
   const handleStartNew = useCallback(() => {
     setSessionKey((k) => k + 1);
@@ -149,8 +171,6 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   const moraEnabled = settings?.enabled ?? true;
   const yoloOn = settings?.yoloMode ?? false;
   const prompts = QUICK_PROMPTS[pageLabel] ?? QUICK_PROMPTS.Unknown;
@@ -160,17 +180,24 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
       <button
         type="button"
         aria-label="Close Mora sidebar"
-        className="fixed inset-0 z-40 bg-espresso/20 backdrop-blur-sm"
+        className={`fixed inset-0 z-40 bg-espresso/20 backdrop-blur-sm transition-opacity duration-300 ${
+          isOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
         onClick={onClose}
+        aria-hidden={!isOpen}
+        tabIndex={isOpen ? 0 : -1}
       />
 
       <aside
         id="mora-sidebar"
         ref={panelRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={isOpen}
         aria-label="Mora AI Assistant"
-        className="fixed inset-y-0 right-0 z-50 w-full md:w-[520px] bg-[#FEFCF8] shadow-2xl border-l border-black/5 flex flex-col animate-in slide-in-from-right duration-300"
+        aria-hidden={!isOpen}
+        className={`fixed inset-y-0 right-0 z-50 w-full md:w-[520px] bg-[#FEFCF8] shadow-2xl border-l border-black/5 flex flex-col transition-transform duration-300 ${
+          isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
+        }`}
       >
         {/* Header */}
         <div
@@ -226,8 +253,17 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
             </div>
           </div>
         ) : (
-          <MoraRuntimeProvider pathname={pathname} sessionKey={sessionKey}>
-            <MoraThread quickPrompts={prompts} />
+          <MoraRuntimeProvider
+            pathname={pathname}
+            sessionKey={sessionKey}
+            activeBabyId={activeBabyId ? String(activeBabyId) : null}
+            activeBaby={activeBaby}
+          >
+            <MoraThread
+              quickPrompts={prompts}
+              pageLabel={pageLabel}
+              activeBabyId={activeBabyId ? String(activeBabyId) : null}
+            />
           </MoraRuntimeProvider>
         )}
       </aside>

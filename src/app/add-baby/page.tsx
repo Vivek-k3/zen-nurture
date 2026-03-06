@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { useGenderThemeType } from "@/components/GenderTheme";
 import Link from "next/link";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select";
 
 type Step = "family" | "baby";
+const UNSPECIFIED_GENDER_VALUE = "unspecified";
 
 export default function AddBabyPage() {
   const router = useRouter();
@@ -26,7 +28,7 @@ export default function AddBabyPage() {
   const [step, setStep] = useState<Step>("family");
   const [familyName, setFamilyName] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
-  const [resolvedFamilyId, setResolvedFamilyId] = useState<string | null>(null);
+  const [resolvedFamilyId, setResolvedFamilyId] = useState<Id<"families"> | null>(null);
 
   const [babyName, setBabyName] = useState("");
   const [babyDob, setBabyDob] = useState("");
@@ -241,12 +243,17 @@ export default function AddBabyPage() {
                   <label htmlFor="add-baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">
                     Gender
                   </label>
-                  <Select value={babyGender} onValueChange={setBabyGender}>
+                  <Select
+                    value={babyGender || UNSPECIFIED_GENDER_VALUE}
+                    onValueChange={(value) =>
+                      setBabyGender(value === UNSPECIFIED_GENDER_VALUE ? "" : value)
+                    }
+                  >
                     <AppSelectTrigger id="add-baby-gender">
                       <SelectValue placeholder="Not specified" />
                     </AppSelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Not specified</SelectItem>
+                      <SelectItem value={UNSPECIFIED_GENDER_VALUE}>Not specified</SelectItem>
                       <SelectItem value="baby-boy">Baby Boy</SelectItem>
                       <SelectItem value="baby-girl">Baby Girl</SelectItem>
                     </SelectContent>

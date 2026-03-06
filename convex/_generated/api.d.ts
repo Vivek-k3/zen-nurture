@@ -9,11 +9,14 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authHttp from "../authHttp.js";
+import type * as authNode from "../authNode.js";
 import type * as digest from "../digest.js";
 import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_eventPayloads from "../lib/eventPayloads.js";
 import type * as milestones from "../milestones.js";
 import type * as mora from "../mora.js";
 import type * as nudges from "../nudges.js";
@@ -30,11 +33,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authHttp: typeof authHttp;
+  authNode: typeof authNode;
   digest: typeof digest;
   events: typeof events;
   families: typeof families;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/eventPayloads": typeof lib_eventPayloads;
   milestones: typeof milestones;
   mora: typeof mora;
   nudges: typeof nudges;

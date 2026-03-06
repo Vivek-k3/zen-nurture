@@ -33,12 +33,15 @@ function getSuggestions({
 }: {
   dailyAggregates?: DailyAgg | null;
   rangeAggregates?: Record<string, DailyAgg> | null;
-  lastFeed?: { type: string; payload?: { amountMl?: number; durationMin?: number } };
-  lastDiaper?: { payload?: { kind?: string } };
-  lastMed?: { payload?: { medicineName?: string } };
+  lastFeed?: { type: string; payload?: unknown } | null;
+  lastDiaper?: { payload?: unknown } | null;
+  lastMed?: { payload?: unknown } | null;
   isSleeping: boolean;
 }): Suggestion[] {
   const suggestions: Suggestion[] = [];
+  const lastFeedPayload = (lastFeed?.payload ?? {}) as Record<string, any>;
+  const lastDiaperPayload = (lastDiaper?.payload ?? {}) as Record<string, any>;
+  const lastMedPayload = (lastMed?.payload ?? {}) as Record<string, any>;
 
   // Avg bottle ml from week or today
   let avgBottleMl = 120;
@@ -56,8 +59,8 @@ function getSuggestions({
     avgBottleMl = roundToPreset(
       Math.round(dailyAggregates.feeds.totalMl / dailyAggregates.feeds.count)
     );
-  } else if (lastFeed?.type === "FEED_BOTTLE" && lastFeed.payload?.amountMl) {
-    avgBottleMl = roundToPreset(lastFeed.payload.amountMl);
+  } else if (lastFeed?.type === "FEED_BOTTLE" && lastFeedPayload.amountMl) {
+    avgBottleMl = roundToPreset(lastFeedPayload.amountMl);
   }
 
   // Bottle feed suggestion
@@ -84,8 +87,8 @@ function getSuggestions({
   ];
   const top = counts.reduce((a, b) => (b.v > a.v ? b : a), counts[0]);
   if (top.v > 0) diaperKind = top.k;
-  else if (lastDiaper?.payload?.kind && ["wet", "dirty", "dry", "mixed"].includes(lastDiaper.payload.kind)) {
-    diaperKind = lastDiaper.payload.kind as "wet" | "dirty" | "dry" | "mixed";
+  else if (lastDiaperPayload.kind && ["wet", "dirty", "dry", "mixed"].includes(lastDiaperPayload.kind)) {
+    diaperKind = lastDiaperPayload.kind as "wet" | "dirty" | "dry" | "mixed";
   }
 
   const diaperLabel = diaperKind.charAt(0).toUpperCase() + diaperKind.slice(1);
@@ -113,7 +116,7 @@ function getSuggestions({
   });
 
   // Medicine if we have a recent one
-  const medName = lastMed?.payload?.medicineName;
+  const medName = lastMedPayload.medicineName;
   if (medName?.trim()) {
     suggestions.push({
       id: "med",
@@ -146,9 +149,9 @@ interface QuickSuggestionsPillsProps {
   lastEvents?: Record<string, unknown>;
   dailyAggregates?: DailyAgg | null;
   rangeAggregates?: Record<string, DailyAgg> | null;
-  lastFeed?: { type: string; payload?: { amountMl?: number; durationMin?: number } };
-  lastDiaper?: { payload?: { kind?: string } };
-  lastMed?: { payload?: { medicineName?: string } };
+  lastFeed?: { type: string; payload?: unknown } | null;
+  lastDiaper?: { payload?: unknown } | null;
+  lastMed?: { payload?: unknown } | null;
   isSleeping: boolean;
 }
 

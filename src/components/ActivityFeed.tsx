@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS } from "@/lib/constants";
+import { EVENT_TYPE_LABELS, EVENT_TYPE_ICONS, EVENT_TYPE_COLORS, normalizeEventType } from "@/lib/constants";
 import { authClient } from "@/lib/auth-client";
 import { useLiveTimer, formatElapsed } from "@/hooks/useLiveTimer";
 import { useGenderTheme } from "@/components/GenderTheme";
@@ -75,14 +75,15 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
 
       <div className={compact ? undefined : "max-h-[280px] overflow-y-auto -mx-1 px-1"}>
       {events.map((event: any) => {
+        const normalizedType = normalizeEventType(event.type);
         const isMe = event.loggedBy === myUserId;
         const who = isMe ? "You" : (event.loggedByName || "Someone");
-        const typeLabel = (EVENT_TYPE_LABELS[event.type] ?? event.type).toLowerCase();
-        const icon = EVENT_TYPE_ICONS[event.type] ?? "event";
-        const color = EVENT_TYPE_COLORS[event.type] ?? "muted";
+        const typeLabel = EVENT_TYPE_LABELS[normalizedType] ?? normalizedType;
+        const icon = EVENT_TYPE_ICONS[normalizedType] ?? "event";
+        const color = EVENT_TYPE_COLORS[normalizedType] ?? "muted";
         const ts = new Date(event.timestamp).getTime();
         const ago = formatElapsed(ts, now);
-        const detail = getShortDetail(event.type, event.payload);
+        const detail = getShortDetail(normalizedType, event.payload);
 
         if (compact) {
           return (
@@ -91,6 +92,7 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
               <p className="text-[11px] text-muted flex-1 truncate">
                 <span className={`font-semibold ${isMe ? "text-espresso" : genderTheme.text}`}>{who}</span>
                 {" "}logged {typeLabel}{detail ? ` · ${detail}` : ""}
+                {event.source === "mora" ? " · via Mora" : ""}
               </p>
               <span className="text-[10px] text-muted/60 shrink-0">{ago}</span>
             </div>
@@ -108,7 +110,15 @@ export default function ActivityFeed({ babyId, compact = false }: ActivityFeedPr
                 {" "}logged a <span className="font-medium">{typeLabel}</span>
                 {detail ? <span className="text-muted"> · {detail}</span> : ""}
               </p>
-              <p className="text-[11px] text-muted mt-0.5">{ago} ago{event.source === "mora" ? " · via Mora" : ""}</p>
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
+                <span>{ago} ago</span>
+                {event.source === "mora" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sage/8 px-1.5 py-0.5 text-sage">
+                    <span className="material-symbols-outlined text-[12px]">smart_toy</span>
+                    via Mora
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         );
