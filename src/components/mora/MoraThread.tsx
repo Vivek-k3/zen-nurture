@@ -22,6 +22,14 @@ interface MoraThreadProps {
   activeBabyId?: string | null;
 }
 
+export function mergeComposerTranscript(currentText: string, transcript: string) {
+  const trimmedCurrent = currentText.trim();
+  const trimmedTranscript = transcript.trim();
+
+  if (!trimmedTranscript) return trimmedCurrent;
+  return trimmedCurrent ? `${trimmedCurrent} ${trimmedTranscript}` : trimmedTranscript;
+}
+
 export default function MoraThread({ quickPrompts, pageLabel, activeBabyId }: MoraThreadProps) {
   return (
     <>
@@ -161,13 +169,12 @@ function InProgressIndicator() {
 
 /* ---------- Composer ---------- */
 
-function MoraComposer() {
+export function MoraComposer() {
   const composerRuntime = useComposerRuntime();
 
   const handleVoiceTranscript = useCallback(
     (text: string) => {
-      const currentText = composerRuntime.getState().text.trim();
-      const nextText = currentText ? `${currentText} ${text}` : text;
+      const nextText = mergeComposerTranscript(composerRuntime.getState().text, text);
       composerRuntime.setText(nextText);
     },
     [composerRuntime]

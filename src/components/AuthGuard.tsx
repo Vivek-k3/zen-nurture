@@ -5,8 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
-
-const PUBLIC_PATHS = ["/sign-in", "/sign-up"];
+import { getAuthGuardDecision } from "@/components/auth/authGuardDecision";
 
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession();
@@ -22,62 +21,24 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     api.events.getBabyProfiles,
     isConvexAuthenticated ? {} : "skip"
   );
-
-  const isPublic = PUBLIC_PATHS.includes(pathname);
-  const isOnboarding = pathname === "/onboarding";
-  const familyCount = families?.length ?? 0;
-  const babyCount = babies?.length ?? 0;
-  const isSetupLoading =
-    isConvexAuthenticated && !isPublic && (families === undefined || babies === undefined);
-  const hasCompletedSetup = familyCount > 0 && babyCount > 0;
-  const needsLogin = !isPending && !isConvexAuthLoading && !isConvexAuthenticated && !isPublic;
-  const needsOnboarding =
-    !isPending &&
-    !isConvexAuthLoading &&
-    isConvexAuthenticated &&
-    !isOnboarding &&
-    !isPublic &&
-    !isSetupLoading &&
-    !hasCompletedSetup;
-  const shouldExitOnboarding =
-    !isPending &&
-    !isConvexAuthLoading &&
-    isConvexAuthenticated &&
-    isOnboarding &&
-    !isSetupLoading &&
-    hasCompletedSetup;
+  const decision = getAuthGuardDecision({
+    pathname,
+    isSessionPending: isPending,
+    isConvexAuthLoading,
+    isConvexAuthenticated,
+    families,
+    babies,
+  });
 
   useEffect(() => {
-    if (isPending || isPublic || isConvexAuthLoading || isSetupLoading) return;
-
-    if (needsLogin) {
-      router.replace("/sign-in");
-    } else if (shouldExitOnboarding) {
-      router.replace("/");
-    } else if (needsOnboarding) {
-      router.replace("/onboarding");
+    if (decision.redirectTo) {
+      router.replace(decision.redirectTo);
     }
-  }, [
-    isPending,
-    isPublic,
-    isConvexAuthLoading,
-    isSetupLoading,
-    needsLogin,
-    shouldExitOnboarding,
-    needsOnboarding,
-    router,
-  ]);
+  }, [decision.redirectTo, router]);
 
-  if (isPublic) return <>{children}</>;
+  if (decision.isPublic) return <>{children}</>;
 
-  if (
-    isPending ||
-    isConvexAuthLoading ||
-    isSetupLoading ||
-    needsLogin ||
-    needsOnboarding ||
-    shouldExitOnboarding
-  ) {
+  if (decision.shouldShowLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-oat">
         <div className="text-center">

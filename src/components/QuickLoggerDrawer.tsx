@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, MED_OUTCOMES } from "@/lib/constants";
+import { DIAPER_COLORS, DIAPER_TEXTURES, DEFAULT_MEDICINES, getColorClasses, MED_OUTCOMES } from "@/lib/constants";
 import { Switch } from "@/components/ui/switch";
 import PhotoAttacher from "@/components/PhotoAttacher";
 import FormulaPicker from "@/components/FormulaPicker";
 import MedicinePicker from "@/components/MedicinePicker";
 import DateTimeWheelPicker from "@/components/DateTimeWheelPicker";
 import { useBaby } from "@/components/BabyContext";
+import { buildFormulaDisplayName, buildQuickLogSubmission } from "@/lib/quick-log-event";
 import {
   AppSelectTrigger,
   Select,
@@ -60,13 +61,14 @@ type VolumePickerCardProps = {
 const MAX_FEED_VOLUME_ML = 300;
 
 function LogTile({ icon, label, color, onClick }: LogTileProps) {
+  const cc = getColorClasses(color);
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent hover:border-${color}/20 bg-white shadow-sm`}
+      className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent ${cc.hoverBorder} bg-card shadow-sm`}
     >
-      <div className={`h-12 w-12 rounded-full bg-${color}/10 flex items-center justify-center text-${color}`}>
+      <div className={`h-12 w-12 rounded-full ${cc.bgLight} flex items-center justify-center ${cc.text}`}>
         <span className="material-symbols-outlined text-2xl">{icon}</span>
       </div>
       <span className="text-sm font-bold text-espresso">{label}</span>
@@ -112,7 +114,7 @@ function VolumePickerCard({
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
+    <div className="bg-card rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
       {/* <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
         {value}
         <span className="text-lg text-muted ml-1">ml</span>
@@ -202,10 +204,6 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
   const formulas = useQuery(api.events.listFormulas);
   const medicines = useQuery(api.events.listMedicines);
 
-  const buildFormulaDisplayName = (company: string, type: string, name: string) => {
-    return [company.trim(), type.trim(), name.trim()].filter(Boolean).join(" - ");
-  };
-
   const handleSleepStartChange = (nextDate: Date) => {
     setSleepStart(nextDate);
     if (!isSleepingNow && nextDate.getTime() > sleepEnd.getTime()) {
@@ -222,83 +220,44 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
 
   const handleSaveEvent = async () => {
     if (!babyProfile?._id) return;
-
-    const loggedAt = eventTimestamp.toISOString();
-    let payload: any = {};
-    let eventType = "";
-    let timestamp = loggedAt;
-
-    switch (view) {
-      case "feed":
-        if (feedSubType === "bottle") {
-          let formulaPayload: Record<string, unknown> = {};
-
-          if (bottleContentType === "formula" && formulaName) {
-            await upsertFormula({ name: formulaName, notes: "" });
-            formulaPayload = { formulaName };
-          }
-
-          eventType = "FEED_BOTTLE";
-          payload = {
-            amountMl: volume,
-            contentType: bottleContentType,
-            ...formulaPayload,
-          };
-        } else if (feedSubType === "breast") {
-          eventType = "FEED_BREAST";
-          payload = { side: breastSide, durationMin: duration };
-        } else if (feedSubType === "pump") {
-          eventType = "PUMP";
-          payload = { amountMl: volume };
-        }
-        break;
-      case "diaper":
-        eventType = "DIAPER";
-        payload = {
-          kind: diaperKind,
-          texture: diaperTexture,
-          color: diaperColor,
-          blowout: hasBlowout,
-          rash: hasRash,
-        };
-        break;
-      case "sleep":
-        timestamp = (isSleepingNow ? sleepStart : sleepEnd).toISOString();
-        eventType = "SLEEP";
-        payload = {
-          startTs: sleepStart.toISOString(),
-          endTs: isSleepingNow ? null : sleepEnd.toISOString(),
-          kind: "nap",
-        };
-        break;
-      case "meds": {
-        const finalMedName = medName.trim();
-        if (!finalMedName) return;
-        eventType = "MED_DOSE";
-        payload = {
-          medicineName: finalMedName,
-          doseValue: medDoseValue,
-          doseUnit: medDoseUnit,
-          outcome: medOutcome,
-        };
-        break;
-      }
-      case "note":
-        eventType = "NOTE";
-        payload = { text: noteText };
-        break;
-      case "growth":
-        eventType = "GROWTH";
-        payload = { weightKg: weight || undefined, heightCm: height || undefined, headCm: headCm || undefined };
-        break;
-    }
+    const submission = buildQuickLogSubmission({
+      view,
+      feedSubType,
+      eventTimestamp,
+      sleepStart,
+      sleepEnd,
+      isSleepingNow,
+      bottleContentType,
+      formulaName,
+      volume,
+      duration,
+      breastSide,
+      diaperKind,
+      diaperTexture,
+      diaperColor,
+      hasBlowout,
+      hasRash,
+      medName,
+      medDoseValue,
+      medDoseUnit,
+      medOutcome,
+      noteText,
+      weight,
+      height,
+      headCm,
+    });
+    if (!submission) return;
 
     try {
+      if ("upsertFormulaName" in submission && submission.upsertFormulaName) {
+        await upsertFormula({ name: submission.upsertFormulaName, notes: "" });
+      }
+
       await createEvent({
         babyId: babyProfile._id,
-        type: eventType,
-        timestamp,
-        payload,
+        type: submission.eventType,
+        timestamp: submission.timestamp,
+        payload: submission.payload,
         source: "manual",
         ...(photoIds.length > 0 ? { photoIds } : {}),
       } as any);
@@ -383,7 +342,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
       />
 
       <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-[#FDFBF7] z-50 flex flex-col shadow-2xl transform transition-transform animate-in slide-in-from-right duration-300">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-muted/10 bg-white/50">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-muted/10 bg-card/50">
           <div className="flex items-center gap-4">
             {view !== "menu" && (
               <button
@@ -416,7 +375,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 className={`w-full p-4 rounded-2xl flex items-center gap-4 border transition-all ${
                   isListening
                     ? "bg-alert-red/5 border-alert-red/30 text-alert-red"
-                    : "bg-white border-muted/20 text-muted hover:border-sage/50 hover:shadow-sm"
+                    : "bg-card border-muted/20 text-muted hover:border-sage/50 hover:shadow-sm"
                 }`}
               >
                 <div
@@ -511,7 +470,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                   onClick={() => setFeedSubType("bottle")}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
                     feedSubType === "bottle"
-                      ? "bg-white shadow-sm text-espresso"
+                      ? "bg-card shadow-sm text-espresso"
                       : "text-muted hover:text-espresso"
                   }`}
                 >
@@ -522,7 +481,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                   onClick={() => setFeedSubType("breast")}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
                     feedSubType === "breast"
-                      ? "bg-white shadow-sm text-espresso"
+                      ? "bg-card shadow-sm text-espresso"
                       : "text-muted hover:text-espresso"
                   }`}
                 >
@@ -533,7 +492,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                   onClick={() => setFeedSubType("pump")}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
                     feedSubType === "pump"
-                      ? "bg-white shadow-sm text-espresso"
+                      ? "bg-card shadow-sm text-espresso"
                       : "text-muted hover:text-espresso"
                   }`}
                 >
@@ -556,7 +515,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                       Contents
                     </label>
                     <Select value={bottleContentType} onValueChange={(v) => setBottleContentType(v as BottleContentType)}>
-                      <AppSelectTrigger id="contents" className="bg-white p-4">
+                      <AppSelectTrigger id="contents" className="bg-card p-4">
                         <SelectValue />
                       </AppSelectTrigger>
                       <SelectContent>
@@ -596,7 +555,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                         className={`py-4 rounded-2xl text-sm font-bold transition-all ${
                           breastSide === side
                             ? "bg-sage text-white shadow-md"
-                            : "bg-white text-muted border border-muted/10 hover:border-sage/30"
+                            : "bg-card text-muted border border-muted/10 hover:border-sage/30"
                         }`}
                       >
                         {side.charAt(0).toUpperCase() + side.slice(1)}
@@ -604,7 +563,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                     ))}
                   </div>
 
-                  <div className="bg-white rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
+                  <div className="bg-card rounded-3xl p-6 border border-muted/10 text-center space-y-4 shadow-sm">
                     <div className="text-5xl font-mono font-bold text-espresso tracking-tighter">
                       {duration}
                       <span className="text-lg text-muted ml-1">min</span>
@@ -679,7 +638,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
               </div>
 
               {(diaperKind === "dirty" || diaperKind === "mixed") && (
-                <div className="bg-white rounded-2xl p-4 border border-muted/10 space-y-4">
+                <div className="bg-card rounded-2xl p-4 border border-muted/10 space-y-4">
                   <h4 className="text-xl font-serif text-espresso">Texture &amp; Color</h4>
 
                   <div className="grid grid-cols-5 gap-3">
@@ -720,7 +679,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 </div>
               )}
 
-              <div className="bg-white rounded-2xl border border-muted/10 divide-y divide-muted/10">
+              <div className="bg-card rounded-2xl border border-muted/10 divide-y divide-muted/10">
                 <div className="px-4 py-3.5 flex items-center justify-between">
                   <div>
                     <span className="text-base font-medium text-espresso">Blowout</span>
@@ -757,7 +716,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 className={`w-full py-5 rounded-2xl flex flex-col items-center gap-2 transition-all border ${
                   isSleepingNow
                     ? "bg-night/10 border-night/30 text-night"
-                    : "bg-white border-muted/10 text-muted hover:border-night/20"
+                    : "bg-card border-muted/10 text-muted hover:border-night/20"
                 }`}
               >
                 <span className="material-symbols-outlined text-3xl">
@@ -846,7 +805,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 />
               </div>
 
-              <div className="bg-white rounded-2xl p-5 border border-muted/10 space-y-4 shadow-sm">
+              <div className="bg-card rounded-2xl p-5 border border-muted/10 space-y-4 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <label htmlFor="med-dose" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
@@ -885,21 +844,24 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                     { key: "taken", icon: "check_circle", label: "Taken", color: "sage" },
                     { key: "skipped", icon: "cancel", label: "Skipped", color: "muted" },
                     { key: "vomited", icon: "warning", label: "Vomited", color: "alert-red" },
-                  ] as const).map(({ key, icon, label, color }) => (
+                  ] as const).map(({ key, icon, label, color }) => {
+                    const cc = getColorClasses(color);
+                    return (
                     <button
                       key={key}
                       type="button"
                       onClick={() => setMedOutcome(key)}
                       className={`py-4 rounded-2xl flex flex-col items-center gap-1 text-sm font-bold transition-all ${
                         medOutcome === key
-                          ? `bg-${color}/10 border-${color}/30 border text-${color}`
-                          : "bg-white border border-muted/10 text-muted hover:border-muted/30"
+                          ? `${cc.bgLight} ${cc.borderStrong ?? cc.border} border ${cc.text}`
+                          : "bg-card border border-muted/10 text-muted hover:border-muted/30"
                       }`}
                     >
-                      <span className={`material-symbols-outlined text-lg ${medOutcome === key ? `text-${color}` : ""}`}>{icon}</span>
+                      <span className={`material-symbols-outlined text-lg ${medOutcome === key ? cc.text : ""}`}>{icon}</span>
                       {label}
                     </button>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
             </div>
@@ -917,7 +879,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Add a note..."
-                className="w-full h-40 p-4 rounded-2xl bg-white border border-muted/10 text-espresso font-medium resize-none focus:outline-none focus:ring-2 focus:ring-sage/20"
+                className="w-full h-40 p-4 rounded-2xl bg-card border border-muted/10 text-espresso font-medium resize-none focus:outline-none focus:ring-2 focus:ring-sage/20"
               />
             </div>
           )}
@@ -930,7 +892,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 onChange={setEventTimestamp}
               />
 
-              <div className="bg-white rounded-2xl p-4 border border-muted/10">
+              <div className="bg-card rounded-2xl p-4 border border-muted/10">
                 <label htmlFor="growth-weight" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
                   Weight (kg)
                 </label>
@@ -945,7 +907,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 />
               </div>
 
-              <div className="bg-white rounded-2xl p-4 border border-muted/10">
+              <div className="bg-card rounded-2xl p-4 border border-muted/10">
                 <label htmlFor="growth-height" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
                   Height / Length (cm)
                 </label>
@@ -960,7 +922,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
                 />
               </div>
 
-              <div className="bg-white rounded-2xl p-4 border border-muted/10">
+              <div className="bg-card rounded-2xl p-4 border border-muted/10">
                 <label htmlFor="growth-head" className="text-xs font-bold text-muted uppercase tracking-wider mb-2 block">
                   Head Circumference (cm)
                 </label>
@@ -980,7 +942,7 @@ const QuickLoggerDrawer: React.FC<QuickLoggerDrawerProps> = ({ isOpen, onClose, 
         </div>
 
         {view !== "menu" && (
-          <div className="p-6 border-t border-muted/10 bg-white/80 backdrop-blur-md space-y-3">
+          <div className="p-6 border-t border-muted/10 bg-card/80 backdrop-blur-md space-y-3">
             <div>
               <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Photos (optional)</p>
               <PhotoAttacher storageIds={photoIds} onChange={setPhotoIds} />
