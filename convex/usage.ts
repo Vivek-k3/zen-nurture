@@ -47,9 +47,18 @@ export const moraUsageHandler: UsageHandler = async (ctx, args) => {
     threadId,
   });
 
+  // Reserve the spent tokens against both the per-user and global token
+  // budgets. reserve:true drives the bucket negative when over budget; the
+  // up-front gates in moraChat.streamChat then block the next request until
+  // the bucket refills ("blocking further requests until repaid").
+  const tokens = usage.totalTokens ?? 0;
   await rateLimiter.limit(ctx, "tokenUsagePerUser", {
     key: userId,
-    count: usage.totalTokens ?? 0,
+    count: tokens,
+    reserve: true,
+  });
+  await rateLimiter.limit(ctx, "globalTokenUsage", {
+    count: tokens,
     reserve: true,
   });
 };
