@@ -12,8 +12,8 @@
     "deploy": "vercel build --prod -y && vercel deploy --prebuilt --prod -y"
   },
   "dependencies": {
-    "@ai-sdk/openai": "3.0.0-beta.112",
-    "@ai-sdk/react": "3.0.0-beta.172",
+    "@ai-sdk/openai": "^3.0.67",
+    "@ai-sdk/react": "^3.0.195",
     "@assistant-ui/react": "^0.12.12",
     "@assistant-ui/react-ai-sdk": "^1.3.9",
     "@convex-dev/better-auth": "^0.10.11",
@@ -32,7 +32,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/canvas-confetti": "^1.9.0",
-    "ai": "6.0.0-beta.169",
+    "ai": "^6.0.193",
     "better-auth": "1.4.9",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
