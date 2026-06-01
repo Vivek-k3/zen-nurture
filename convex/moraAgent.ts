@@ -2,6 +2,7 @@ import { Agent, createTool, stepCountIs } from "@convex-dev/agent";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { components, api } from "./_generated/api";
+import { moraUsageHandler } from "./usage";
 
 /**
  * Static system prompt for Mora. Per-request dynamic context (user, baby,
@@ -329,4 +330,5 @@ export const moraAgent = new Agent(components.agent, {
   instructions: MORA_INSTRUCTIONS,
   tools,
   stopWhen: stepCountIs(6),
+  usageHandler: moraUsageHandler,
 });

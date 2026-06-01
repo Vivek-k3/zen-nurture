@@ -10,6 +10,7 @@ import {
 import { components, api } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import { moraAgent, MORA_INSTRUCTIONS } from "./moraAgent";
+import { rateLimiter } from "./rateLimiter";
 import { requireAuth } from "./lib/auth";
 
 const clientContextValidator = v.object({
@@ -111,6 +112,10 @@ export const streamChat = action({
     if (meta.userId && meta.userId !== userId) {
       throw new Error("Not authorized for this thread");
     }
+
+    // Per-user + global request-frequency limits (throws if exceeded).
+    await rateLimiter.limit(ctx, "sendMessage", { key: userId, throws: true });
+    await rateLimiter.limit(ctx, "globalSendMessage", { throws: true });
 
     // The "Enable Mora" toggle is authoritative: a disabled Mora must not
     // produce chat responses, even via direct action calls.
