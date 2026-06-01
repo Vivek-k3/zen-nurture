@@ -59,7 +59,8 @@ export const createThread = mutation({
 /** Build the per-request system prompt: static instructions + live context. */
 async function buildSystemPrompt(
   ctx: ActionCtx,
-  clientContext: ClientContext
+  clientContext: ClientContext,
+  settings: { enabled: boolean; yoloMode: boolean; allowWrites: boolean }
 ): Promise<string> {
   const baby = await ctx.runQuery(api.events.getBabyProfile, {});
   let recentCount = 0;
@@ -77,7 +78,6 @@ async function buildSystemPrompt(
     });
     upcomingCount = upcoming?.length ?? 0;
   }
-  const settings = await ctx.runQuery(api.mora.getMoraSettings, {});
 
   return [
     MORA_INSTRUCTIONS,
@@ -112,7 +112,12 @@ export const streamChat = action({
       throw new Error("Not authorized for this thread");
     }
 
-    const system = await buildSystemPrompt(ctx, clientContext ?? {});
+    // The "Enable Mora" toggle is authoritative: a disabled Mora must not
+    // produce chat responses, even via direct action calls.
+    const settings = await ctx.runQuery(api.mora.getMoraSettings, {});
+    if (!settings.enabled) throw new Error("Mora is disabled");
+
+    const system = await buildSystemPrompt(ctx, clientContext ?? {}, settings);
 
     const result = await moraAgent.streamText(
       ctx,

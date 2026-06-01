@@ -156,19 +156,19 @@ const tools = {
     execute: async (ctx, { query, days = 30, limit = 50 }): Promise<unknown> => {
       const profile = await ctx.runQuery(api.events.getBabyProfile, {});
       if (!profile?._id) return [];
+      // Fetch a bounded multiple of the requested limit so substring matching
+      // has headroom without scanning the whole history (listEvents .take()s this).
+      const fetchLimit = Math.min(Math.max(limit * 5, 100), 200);
       const events = await ctx.runQuery(api.events.listEvents, {
         babyId: profile._id,
         from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
         to: new Date().toISOString(),
-        limit: 500,
+        limit: fetchLimit,
       });
       const q = query.toLowerCase();
       return (events || [])
-        .filter(
-          (event) =>
-            JSON.stringify(event.payload ?? {}).toLowerCase().includes(q) ||
-            JSON.stringify(event).toLowerCase().includes(q)
-        )
+        // Stringify each event once instead of twice (the payload is part of it).
+        .filter((event) => JSON.stringify(event).toLowerCase().includes(q))
         .slice(0, limit);
     },
   }),
@@ -197,16 +197,27 @@ const tools = {
         "MED_DOSE",
       ];
 
+      // Fetch every type's events in parallel with a bounded, days-scaled
+      // limit. Sequential 500-row reads per type could load thousands of
+      // events in one tool call and risk action timeouts during streaming.
+      const perTypeLimit = Math.min(Math.max(days * 20, 100), 300);
+      const eventsByType = await Promise.all(
+        typesToAnalyze.map((type) =>
+          ctx.runQuery(api.events.listEvents, {
+            babyId: profile._id,
+            from,
+            to,
+            type,
+            limit: perTypeLimit,
+          })
+        )
+      );
+
       const results: Record<string, unknown> = {};
 
-      for (const type of typesToAnalyze) {
-        const events = await ctx.runQuery(api.events.listEvents, {
-          babyId: profile._id,
-          from,
-          to,
-          type,
-          limit: 500,
-        });
+      for (let i = 0; i < typesToAnalyze.length; i++) {
+        const type = typesToAnalyze[i];
+        const events = eventsByType[i];
 
         if (!events || events.length < 2) {
           results[type] = { count: events?.length ?? 0, intervalHours: null, suggestion: null };
