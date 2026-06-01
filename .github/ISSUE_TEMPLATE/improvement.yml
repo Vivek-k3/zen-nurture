@@ -1,0 +1,63 @@
+name: "🔧 Improvement"
+description: "Improve, finish, or polish an existing feature"
+title: "[Improvement]: "
+labels: ["improvement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for enhancements to functionality that already exists (polish, finishing half-built flows, performance, correctness).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior / gap
+      description: What exists today and what's missing, rough, or wrong about it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should the improved behavior be?
+    validations:
+      required: true
+  - type: textarea
+    id: assets
+    attributes:
+      label: Affected files / references
+      description: Files, components, or schema this touches.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ]
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - High
+        - Medium
+        - Strategic
+    validations:
+      required: true
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort
+      options:
+        - "S (days)"
+        - "M (1-2 weeks)"
+        - "L (multi-week)"
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions / dependencies

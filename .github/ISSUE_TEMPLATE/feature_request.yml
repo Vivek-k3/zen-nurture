@@ -1,0 +1,64 @@
+name: "✨ Feature request"
+description: "Propose a new feature or capability for Zen Nurture"
+title: "[Feature]: "
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature! Fill out the sections below so we can scope and prioritize it.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Why now
+      description: What user or product problem does this solve? Why is it worth doing now?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should we build? Describe the UX and behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: assets
+    attributes:
+      label: Existing assets / references
+      description: Relevant files, schema, or components already in the codebase to build on.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of what "done" means.
+      value: |
+        - [ ]
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - High
+        - Medium
+        - Strategic
+    validations:
+      required: true
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort
+      options:
+        - "S (days)"
+        - "M (1-2 weeks)"
+        - "L (multi-week)"
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions / dependencies
