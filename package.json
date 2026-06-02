@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "convex": "convex dev",
     "deploy": "vercel build --prod -y && vercel deploy --prebuilt --prod -y"
   },
@@ -69,7 +71,8 @@
     "shadcn": "^3.8.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5",
-    "typescript-eslint": "^8.56.1"
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.1.8"
   },
   "packageManager": "pnpm@9.10.0",
   "overrides": {
