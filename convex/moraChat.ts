@@ -149,7 +149,7 @@ export const listThreadMessages = query({
     paginationOpts: paginationOptsValidator,
     streamArgs: vStreamArgs,
   },
-  handler: async (ctx, args): Promise<Record<string, unknown>> => {
+  handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     const meta = await getThreadMetadata(ctx, components.agent, {
       threadId: args.threadId,

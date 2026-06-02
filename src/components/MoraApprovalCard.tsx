@@ -3,74 +3,80 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 
-interface MoraApprovalCardProps {
-  action: any;
-  onAfterAction?: () => void;
+interface MoraAction {
+  _id: string;
+  actionType?: string;
+  preview?: string;
+  payload?: unknown;
 }
 
-export default function MoraApprovalCard({ action, onAfterAction }: MoraApprovalCardProps) {
+interface MoraApprovalCardProps {
+  action: MoraAction;
+}
+
+export default function MoraApprovalCard({ action }: MoraApprovalCardProps) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const approve = useMutation(api.mora.approveMoraAction);
   const reject = useMutation(api.mora.rejectMoraAction);
-  const execute = useMutation(api.mora.executeApprovedMoraAction);
-  const createMessage = useMutation(api.mora.createMoraMessage);
+
+  const actionType = action.actionType ?? "";
 
   const handleApprove = async () => {
     setBusy("approve");
+    setError(null);
     try {
-      await approve({ actionId: action._id });
-      const result = await execute({ actionId: action._id });
-      await createMessage({
-        threadId: action.threadId,
-        role: "assistant",
-        parts: [{ type: "text", text: result.summary }],
-        text: result.summary,
-      });
-      onAfterAction?.();
-    } finally {
+      // approveMoraAction applies the change and notes the result in the thread.
+      await approve({ actionId: action._id as Id<"moraActions"> });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to apply");
       setBusy(null);
     }
   };
 
   const handleReject = async () => {
     setBusy("reject");
+    setError(null);
     try {
-      await reject({ actionId: action._id, reason: "Rejected in Mora sidebar" });
-      await createMessage({
-        threadId: action.threadId,
-        role: "assistant",
-        parts: [{ type: "text", text: `Action rejected: ${action.preview}` }],
-        text: `Action rejected: ${action.preview}`,
+      await reject({
+        actionId: action._id as Id<"moraActions">,
+        reason: "Rejected in Mora sidebar",
       });
-      onAfterAction?.();
-    } finally {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reject");
       setBusy(null);
     }
   };
 
-  const riskTone =
-    action.actionType.includes("delete")
-      ? "text-alert-red bg-alert-red/8 border-alert-red/20"
-      : action.actionType.includes("update")
-      ? "text-night bg-night/5 border-night/10"
-      : "text-sage bg-sage/8 border-sage/20";
+  const riskTone = actionType.includes("delete")
+    ? "text-alert-red bg-alert-red/8 border-alert-red/20"
+    : actionType.includes("update")
+    ? "text-night bg-night/5 border-night/10"
+    : "text-sage bg-sage/8 border-sage/20";
 
   return (
     <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="text-sm font-semibold text-espresso">Approval Required</div>
-          <div className="text-xs text-muted mt-1">{action.preview}</div>
+          {action.preview && <div className="text-xs text-muted mt-1">{action.preview}</div>}
         </div>
         <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${riskTone}`}>
-          {action.actionType.split(".")[1] ?? "action"}
+          {actionType.split(".")[1] ?? "action"}
         </span>
       </div>
-      <pre className="text-[11px] leading-relaxed text-muted bg-oat/60 border border-black/5 rounded-xl p-3 overflow-x-auto">
-        {JSON.stringify(action.payload, null, 2)}
-      </pre>
+
+      {action.payload != null && (
+        <pre className="text-[11px] leading-relaxed text-muted bg-oat/60 border border-black/5 rounded-xl p-3 overflow-x-auto">
+          {JSON.stringify(action.payload, null, 2)}
+        </pre>
+      )}
+
+      {error && <p className="text-[11px] text-alert-red mt-2">{error}</p>}
+
       <div className="mt-3 flex items-center justify-end gap-2">
         <Button variant="secondary" size="sm" onClick={handleReject} disabled={busy !== null}>
           {busy === "reject" ? "Rejecting..." : "Reject"}

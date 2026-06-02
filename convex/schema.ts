@@ -182,8 +182,11 @@ export default defineSchema({
     createdAt: v.string(),
   }).index("by_threadId_createdAt", ["threadId", "createdAt"]),
 
+  // Mora-proposed writes (the approval gate). threadId is the agent component's
+  // string thread id; userId scopes access (replaces the old moraThreads link).
   moraActions: defineTable({
-    threadId: v.id("moraThreads"),
+    threadId: v.string(),
+    userId: v.string(),
     status: v.string(),
     actionType: v.string(),
     payload: v.any(),

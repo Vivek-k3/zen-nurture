@@ -5,15 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { DefaultChatTransport } from "ai";
 import { Button } from "@/components/ui/button";
 import { useTour } from "@/components/ui/tour";
 import MoraOrb from "@/components/MoraOrb";
-import MoraThread from "@/components/mora/MoraThread";
-import MoraToolUIs from "@/components/mora/MoraToolUIs";
-import { DataState } from "@/components/DataState";
+import MoraThread, { type MoraClientContext } from "@/components/mora/MoraThread";
+import { authClient } from "@/lib/auth-client";
 
 function MoraTourButton() {
   const { start } = useTour();
@@ -29,7 +25,6 @@ function MoraTourButton() {
     </Button>
   );
 }
-import { authClient } from "@/lib/auth-client";
 
 interface MoraSidebarProps {
   isOpen: boolean;
@@ -54,73 +49,66 @@ const QUICK_PROMPTS: Record<string, string[]> = {
   Unknown: ["What can you help with?"],
 };
 
-function MoraRuntimeProvider({
-  children,
-  pathname,
-  sessionKey,
-}: {
-  children: React.ReactNode;
-  pathname: string;
-  sessionKey: number;
-}) {
+/**
+ * Owns the agent thread lifecycle and builds the per-request client context.
+ * A new thread is created when opened and whenever "New" bumps `sessionKey`.
+ */
+function MoraConversation({ pathname, sessionKey }: { pathname: string; sessionKey: number }) {
   const pageLabel = getPageLabel(pathname);
   const { data: session } = authClient.useSession();
   const babyProfile = useQuery(api.events.getBabyProfile, {});
   const families = useQuery(api.families.listMyFamilies, {});
   const familyName = families?.[0]?.name;
 
-  const createThread = useMutation(api.mora.getOrCreateMoraThread);
-  const closeThread = useMutation(api.mora.closeMoraThread);
+  const createThread = useMutation(api.moraChat.createThread);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const prevThreadRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    if (prevThreadRef.current) setThreadId(null);
+    setThreadId(null);
     void (async () => {
       try {
-        if (prevThreadRef.current) {
-          await closeThread({ threadId: prevThreadRef.current as any });
-        }
-        const thread = await createThread({ babyId: babyProfile?._id } as any);
-        if (active && thread?._id) {
-          setThreadId(thread._id);
-          prevThreadRef.current = thread._id;
-        }
-      } catch {}
+        const id = await createThread({});
+        if (active) setThreadId(id);
+      } catch (err) {
+        console.error("[mora] createThread failed", err);
+      }
     })();
-    return () => { active = false; };
-  }, [sessionKey, babyProfile?._id]);
+    return () => {
+      active = false;
+    };
+    // A new thread per session bump; createThread identity is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey]);
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/mora",
-        body: {
-          threadId,
-          clientContext: {
-            pathname,
-            pageLabel,
-            timestamp: new Date().toISOString(),
-            userName: session?.user?.name ?? undefined,
-            userEmail: session?.user?.email ?? undefined,
-            babyName: babyProfile?.name ?? undefined,
-            babyDob: babyProfile?.dob ?? undefined,
-            babyTimezone: babyProfile?.timezone ?? undefined,
-            familyName: familyName ?? undefined,
-          },
-        },
-      }),
-    [pathname, pageLabel, sessionKey, threadId]
+  const clientContext = useMemo<MoraClientContext>(
+    () => ({
+      pathname,
+      pageLabel,
+      userName: session?.user?.name ?? undefined,
+      userEmail: session?.user?.email ?? undefined,
+      babyName: babyProfile?.name ?? undefined,
+      babyDob: babyProfile?.dob ?? undefined,
+      babyTimezone: babyProfile?.timezone ?? undefined,
+      familyName: familyName ?? undefined,
+    }),
+    [pathname, pageLabel, session?.user?.name, session?.user?.email, babyProfile?.name, babyProfile?.dob, babyProfile?.timezone, familyName]
   );
 
-  const runtime = useChatRuntime({ transport });
+  if (!threadId) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <MoraOrb size="md" state="thinking" />
+      </div>
+    );
+  }
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <MoraToolUIs />
-      {children}
-    </AssistantRuntimeProvider>
+    <MoraThread
+      threadId={threadId}
+      quickPrompts={QUICK_PROMPTS[pageLabel] ?? QUICK_PROMPTS.Unknown}
+      clientContext={clientContext}
+    />
   );
 }
 
@@ -153,7 +141,6 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
 
   const moraEnabled = settings?.enabled ?? true;
   const yoloOn = settings?.yoloMode ?? false;
-  const prompts = QUICK_PROMPTS[pageLabel] ?? QUICK_PROMPTS.Unknown;
 
   return (
     <>
@@ -173,10 +160,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
         className="fixed inset-y-0 right-0 z-50 w-full md:w-[520px] bg-[#FEFCF8] shadow-2xl border-l border-black/5 flex flex-col animate-in slide-in-from-right duration-300"
       >
         {/* Header */}
-        <div
-          className="border-b border-black/5 px-4 md:px-5 py-3"
-          data-tour-step-id="mora-intro"
-        >
+        <div className="border-b border-black/5 px-4 md:px-5 py-3" data-tour-step-id="mora-intro">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <MoraOrb size="sm" state="idle" />
@@ -186,9 +170,13 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                yoloOn ? "bg-alert-red/8 text-alert-red border-alert-red/20" : "bg-sage/8 text-sage border-sage/20"
-              }`}>
+              <span
+                className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                  yoloOn
+                    ? "bg-alert-red/8 text-alert-red border-alert-red/20"
+                    : "bg-sage/8 text-sage border-sage/20"
+                }`}
+              >
                 {yoloOn ? "YOLO" : "Safe"}
               </span>
               <MoraTourButton />
@@ -214,9 +202,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
             <div className="rounded-2xl border border-alert-red/15 bg-white p-6 shadow-sm text-center max-w-xs">
               <MoraOrb size="lg" state="idle" className="mx-auto mb-3" />
               <h3 className="font-semibold text-espresso mb-1">Mora is disabled</h3>
-              <p className="text-[13px] text-muted mb-4">
-                Enable Mora in Settings to use the AI assistant.
-              </p>
+              <p className="text-[13px] text-muted mb-4">Enable Mora in Settings to use the AI assistant.</p>
               <Link
                 href="/settings"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-espresso text-oat text-[12px] font-semibold"
@@ -226,9 +212,7 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
             </div>
           </div>
         ) : (
-          <MoraRuntimeProvider pathname={pathname} sessionKey={sessionKey}>
-            <MoraThread quickPrompts={prompts} />
-          </MoraRuntimeProvider>
+          <MoraConversation pathname={pathname} sessionKey={sessionKey} />
         )}
       </aside>
     </>

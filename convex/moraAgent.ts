@@ -322,6 +322,136 @@ const tools = {
       };
     },
   }),
+
+  // --- Write tools: routed through the approval gate (queueMoraWrite). In Safe
+  // mode they queue an approval card; in YOLO mode non-delete writes apply
+  // immediately. Deletes always require explicit approval. ---
+
+  create_event: createTool({
+    description:
+      "Create a baby event (feed, diaper, sleep, meds, growth, pump). Queues for approval in Safe mode.",
+    inputSchema: z.object({
+      type: z.string(),
+      timestamp: z.string().optional(),
+      payload: z.record(z.string(), z.any()).optional(),
+      preview: z.string().optional(),
+    }),
+    execute: async (ctx, { type, timestamp, payload, preview }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "event.create",
+        payload: { type, timestamp, payload },
+        preview: preview ?? `Create ${type} event`,
+      });
+    },
+  }),
+
+  update_event: createTool({
+    description: "Update an existing event by id. Queues for approval in Safe mode.",
+    inputSchema: z.object({
+      id: z.string(),
+      timestamp: z.string().optional(),
+      payload: z.record(z.string(), z.any()).optional(),
+      preview: z.string().optional(),
+    }),
+    execute: async (ctx, { id, timestamp, payload, preview }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "event.update",
+        payload: { id, timestamp, payload },
+        preview: preview ?? `Update event ${id}`,
+      });
+    },
+  }),
+
+  delete_event: createTool({
+    description: "Delete an event by id. Always requires explicit user approval.",
+    inputSchema: z.object({ id: z.string(), preview: z.string().optional() }),
+    execute: async (ctx, { id, preview }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "event.delete",
+        payload: { id },
+        preview: preview ?? `Delete event ${id}`,
+      });
+    },
+  }),
+
+  create_note: createTool({
+    description: "Create a NOTE event in the log. Queues for approval in Safe mode.",
+    inputSchema: z.object({ text: z.string().min(1), timestamp: z.string().optional() }),
+    execute: async (ctx, { text, timestamp }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "note.create",
+        payload: { text, timestamp },
+        preview: `Create note: ${text.slice(0, 80)}`,
+      });
+    },
+  }),
+
+  create_reminder: createTool({
+    description: "Create a reminder rule. Queues for approval in Safe mode.",
+    inputSchema: z.object({
+      title: z.string(),
+      category: z.string().optional(),
+      triggerType: z.string().optional(),
+      triggerConfig: z.record(z.string(), z.any()).optional(),
+      enabled: z.boolean().optional(),
+      preview: z.string().optional(),
+    }),
+    execute: async (ctx, { preview, ...payload }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "reminder.create",
+        payload,
+        preview: preview ?? `Create reminder: ${payload.title}`,
+      });
+    },
+  }),
+
+  update_reminder: createTool({
+    description: "Update a reminder rule by id. Queues for approval in Safe mode.",
+    inputSchema: z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      triggerType: z.string().optional(),
+      triggerConfig: z.record(z.string(), z.any()).optional(),
+      enabled: z.boolean().optional(),
+      quietHoursStart: z.number().optional(),
+      quietHoursEnd: z.number().optional(),
+      snoozeOptions: z.any().optional(),
+      preview: z.string().optional(),
+    }),
+    execute: async (ctx, { preview, ...payload }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "reminder.update",
+        payload,
+        preview: preview ?? `Update reminder ${payload.id}`,
+      });
+    },
+  }),
+
+  delete_reminder: createTool({
+    description: "Delete a reminder rule by id. Always requires explicit user approval.",
+    inputSchema: z.object({ id: z.string(), preview: z.string().optional() }),
+    execute: async (ctx, { id, preview }): Promise<unknown> => {
+      if (!ctx.threadId) return { status: "blocked", reason: "No active thread." };
+      return await ctx.runMutation(api.mora.queueMoraWrite, {
+        threadId: ctx.threadId,
+        actionType: "reminder.delete",
+        payload: { id },
+        preview: preview ?? `Delete reminder ${id}`,
+      });
+    },
+  }),
 };
 
 export const moraAgent = new Agent(components.agent, {
