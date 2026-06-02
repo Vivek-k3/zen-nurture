@@ -45,7 +45,7 @@ const QUICK_PROMPTS: Record<string, string[]> = {
   Trends: ["Analyze last 7 days", "Any feeding patterns?"],
   Reminders: ["Show upcoming reminders", "Create a 9 AM vitamin reminder"],
   Records: ["Find notes about rash", "Summarize recent meds"],
-  Settings: ["Explain YOLO mode", "What can Mora update?"],
+  Settings: ["What can Mora do?", "What can Mora update?"],
   Unknown: ["What can you help with?"],
 };
 
@@ -140,7 +140,6 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
   if (!isOpen) return null;
 
   const moraEnabled = settings?.enabled ?? true;
-  const yoloOn = settings?.yoloMode ?? false;
 
   return (
     <>
@@ -170,15 +169,6 @@ export default function MoraSidebar({ isOpen, onClose }: MoraSidebarProps) {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span
-                className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                  yoloOn
-                    ? "bg-alert-red/8 text-alert-red border-alert-red/20"
-                    : "bg-sage/8 text-sage border-sage/20"
-                }`}
-              >
-                {yoloOn ? "YOLO" : "Safe"}
-              </span>
               <MoraTourButton />
               <Button
                 variant="ghost"

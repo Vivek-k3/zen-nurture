@@ -61,7 +61,7 @@ export const createThread = mutation({
 async function buildSystemPrompt(
   ctx: ActionCtx,
   clientContext: ClientContext,
-  settings: { enabled: boolean; yoloMode: boolean; allowWrites: boolean }
+  settings: { enabled: boolean }
 ): Promise<string> {
   const baby = await ctx.runQuery(api.events.getBabyProfile, {});
   let recentCount = 0;
@@ -89,7 +89,6 @@ async function buildSystemPrompt(
     `- Baby: ${clientContext.babyName || baby?.name || "Unknown"}${clientContext.babyDob ? ` (DOB: ${clientContext.babyDob})` : ""}`,
     `- Timezone: ${clientContext.babyTimezone || baby?.timezone || "Asia/Kolkata"}`,
     `- Page: ${clientContext.pageLabel ?? "Unknown"} (${clientContext.pathname ?? "/"})`,
-    `- Mora settings: enabled=${settings.enabled}, yoloMode=${settings.yoloMode}, allowWrites=${settings.allowWrites}`,
     `- Recent events (24h): ${recentCount}`,
     `- Upcoming reminders: ${upcomingCount}`,
   ].join("\n");

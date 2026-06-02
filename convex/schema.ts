@@ -182,27 +182,6 @@ export default defineSchema({
     createdAt: v.string(),
   }).index("by_threadId_createdAt", ["threadId", "createdAt"]),
 
-  // Mora-proposed writes (the approval gate). threadId is the agent component's
-  // string thread id; userId scopes access (replaces the old moraThreads link).
-  moraActions: defineTable({
-    threadId: v.string(),
-    // Optional only to tolerate pre-migration rows; always set on new writes.
-    userId: v.optional(v.string()),
-    status: v.string(),
-    actionType: v.string(),
-    payload: v.any(),
-    preview: v.string(),
-    requiresApproval: v.boolean(),
-    approvedAt: v.optional(v.string()),
-    executedAt: v.optional(v.string()),
-    error: v.optional(v.string()),
-    result: v.optional(v.any()),
-    createdAt: v.string(),
-  })
-    .index("by_threadId_createdAt", ["threadId", "createdAt"])
-    .index("by_threadId_status_createdAt", ["threadId", "status", "createdAt"])
-    .index("by_status", ["status"]),
-
   // Per-generation token/cost usage ("AI events"), recorded by the agent's
   // usageHandler. Aggregated per billing period for spend tracking.
   aiUsage: defineTable({

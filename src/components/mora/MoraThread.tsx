@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { useUIMessages, useSmoothText } from "@convex-dev/agent/react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { ShimmeringText } from "@/components/shimmering-text/shimmering-text";
 import MoraOrb from "@/components/MoraOrb";
-import MoraApprovalCard from "@/components/MoraApprovalCard";
 import VoiceButton from "./VoiceButton";
 
 export type MoraClientContext = {
@@ -33,7 +32,6 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
     { threadId },
     { initialNumItems: 30, stream: true }
   );
-  const pending = useQuery(api.mora.listPendingMoraActions, { threadId }) ?? [];
   const streamChat = useAction(api.moraChat.streamChat);
 
   const [input, setInput] = useState("");
@@ -65,7 +63,7 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
   useEffect(() => {
     const el = viewportRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages, pending, sending]);
+  }, [messages, sending]);
 
   const isEmpty = (messages?.length ?? 0) === 0;
   const lastIsAssistant = messages?.[messages.length - 1]?.role === "assistant";
@@ -79,14 +77,6 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
           <div className="py-2">
             {messages.map((m) => (
               <MoraMessage key={m.key} role={m.role} text={m.text} parts={m.parts} streaming={m.status === "streaming"} />
-            ))}
-          </div>
-        )}
-
-        {pending.length > 0 && (
-          <div className="px-4 py-2 space-y-2">
-            {pending.map((action: { _id: string }) => (
-              <MoraApprovalCard key={action._id} action={action} />
             ))}
           </div>
         )}
@@ -132,8 +122,8 @@ function MoraWelcome({ quickPrompts, onPick }: { quickPrompts: string[]; onPick:
           <span className="text-[13px] font-semibold text-espresso">Mora</span>
         </div>
         <p className="text-[13px] text-muted leading-relaxed">
-          Ask about feeds, sleep, diapers, reminders, or trends. I&rsquo;ll ask for
-          approval before changes unless YOLO mode is on.
+          Ask about feeds, sleep, diapers, reminders, or trends — and I can log
+          or update entries for you.
         </p>
         <p className="text-[11px] mt-1.5">
           <ShimmeringText
