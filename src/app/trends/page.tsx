@@ -212,7 +212,7 @@ export default function TrendsPage() {
     const diaperSection = is1d && today
       ? {
           total: today.diapers?.total ?? 0,
-          subBreakdown: [["wet", today.diapers?.wet], ["dirty", today.diapers?.dirty]]
+          subBreakdown: ([["wet", today.diapers?.wet], ["dirty", today.diapers?.dirty]] as Array<[string, number | undefined]>)
             .filter(([, n]) => (n ?? 0) > 0)
             .map(([k, n]) => `${n} ${k}`)
             .join(", ") || undefined,
