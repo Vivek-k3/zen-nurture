@@ -50,7 +50,10 @@ export default function SettingsPage() {
 
   const { data: session } = authClient.useSession();
   const families = useQuery(api.families.listMyFamilies, {});
-  const currentFamily = families?.[0];
+  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  // Scope the family section to the active baby's family (not just families[0]).
+  const currentFamily =
+    families?.find((f) => f?._id === babyProfile?.familyId) ?? families?.[0];
   const familyId = currentFamily?._id;
 
   const familyMembers = useQuery(
@@ -63,7 +66,6 @@ export default function SettingsPage() {
   );
   const myInvitations = useQuery(api.families.listMyInvitations, {});
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
   const babyId = babyProfile?._id;
   const exportDataQuery = useQuery(api.events.exportBabyData, babyId ? { babyId } : "skip");
   const caregivers = useQuery(api.events.listCaregivers, babyId ? { babyId } : "skip");

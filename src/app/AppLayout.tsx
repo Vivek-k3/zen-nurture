@@ -9,6 +9,7 @@ import UserMenu from "@/components/UserMenu";
 import NotificationBell from "@/components/NotificationBell";
 import ThemeToggle from "@/components/ThemeToggle";
 import MoraOrb from "@/components/MoraOrb";
+import BabySwitcher from "@/components/BabySwitcher";
 
 const CHROMELESS_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
@@ -61,6 +62,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4">
+            <BabySwitcher compact />
             <button
               type="button"
               onClick={openQuickLog}
@@ -99,6 +101,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
             <h1 className="text-lg font-bold text-espresso font-serif">Zen Nurture</h1>
           </div>
           <div className="flex items-center gap-1">
+            <BabySwitcher compact />
             <button
               ref={moraTriggerRef}
               type="button"
