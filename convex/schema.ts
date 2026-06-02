@@ -186,7 +186,8 @@ export default defineSchema({
   // string thread id; userId scopes access (replaces the old moraThreads link).
   moraActions: defineTable({
     threadId: v.string(),
-    userId: v.string(),
+    // Optional only to tolerate pre-migration rows; always set on new writes.
+    userId: v.optional(v.string()),
     status: v.string(),
     actionType: v.string(),
     payload: v.any(),

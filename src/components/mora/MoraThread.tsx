@@ -38,6 +38,7 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const send = useCallback(
@@ -46,10 +47,14 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
       if (!prompt || sending) return;
       setInput("");
       setSending(true);
+      setError(null);
       try {
         await streamChat({ threadId, prompt, clientContext });
       } catch (err) {
         console.error("[mora] streamChat failed", err);
+        const msg = err instanceof Error ? err.message : "Something went wrong.";
+        // Surface rate-limit / auth / config failures instead of failing silently.
+        setError(/rate limit|RateLimit/.test(msg) ? "You're sending messages too fast — give it a moment." : msg);
       } finally {
         setSending(false);
       }
@@ -91,6 +96,15 @@ export default function MoraThread({ threadId, quickPrompts, clientContext }: Mo
             <div className="inline-flex items-center gap-1.5 text-[11px] text-muted">
               <MoraOrb size="xs" state="thinking" />
               <span>Thinking…</span>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="px-4 py-1.5">
+            <div className="flex items-start gap-2 rounded-xl border border-alert-red/20 bg-alert-red/5 px-3 py-2 text-[12px] text-alert-red">
+              <span className="material-symbols-outlined text-[16px]">error</span>
+              <span>{error}</span>
             </div>
           </div>
         )}
