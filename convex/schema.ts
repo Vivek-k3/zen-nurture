@@ -159,6 +159,20 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_endpoint", ["endpoint"]),
 
+  // Per-notification delivery outcomes, recorded by the push send routes so
+  // failures are visible (not just console.log'd).
+  pushDeliveries: defineTable({
+    endpoint: v.string(),
+    userId: v.optional(v.string()),
+    status: v.string(), // "sent" | "failed" | "expired"
+    attempts: v.number(),
+    title: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_status", ["status"]),
+
   settings: defineTable({
     key: v.string(),
     value: v.any(),
