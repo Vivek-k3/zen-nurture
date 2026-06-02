@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 type BabyProfile = {
@@ -38,6 +38,7 @@ const STORAGE_KEY = "zen-nurture-active-baby";
 
 export function BabyProvider({ children }: { children: ReactNode }) {
   const babies = useQuery(api.events.getBabyProfiles, {}) as BabyProfile[] | undefined;
+  const persistActiveBaby = useMutation(api.events.setActiveBaby);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const autoSelectedRef = useRef(false);
@@ -71,13 +72,20 @@ export function BabyProvider({ children }: { children: ReactNode }) {
   const activeBaby = selectedId
     ? babyList.find((b) => String(b._id) === selectedId) ?? babyList[0] ?? null
     : babyList[0] ?? null;
+  const activeBabyId = activeBaby?._id ?? null;
+
+  // Persist the active baby server-side so Mora (which runs on the server) acts
+  // on the same baby the UI is showing.
+  useEffect(() => {
+    if (activeBabyId) void persistActiveBaby({ babyId: activeBabyId }).catch(() => {});
+  }, [activeBabyId, persistActiveBaby]);
 
   return (
     <BabyCtx.Provider
       value={{
         babies: babyList,
         activeBaby,
-        activeBabyId: activeBaby?._id ?? null,
+        activeBabyId,
         switchBaby,
         isLoading: !hydrated || babies === undefined,
       }}

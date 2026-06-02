@@ -2,7 +2,8 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { requireAuth, requireBabyAccess, getUserFamilyIds } from "./lib/auth";
+import { requireAuth, requireBabyAccess } from "./lib/auth";
+import { getActiveBabyIdForUser } from "./lib/baby";
 
 const MORA_SETTINGS_KEY = "mora.config";
 
@@ -28,23 +29,6 @@ async function getResolvedSettings(
 ): Promise<MoraSettings> {
   const doc = await getSettingsDoc(ctx);
   return doc?.value ? { ...defaultSettings(), ...doc.value } : defaultSettings();
-}
-
-async function getLatestBabyProfileIdForUser(
-  ctx: Parameters<typeof getUserFamilyIds>[0],
-  userId: string
-): Promise<Id<"babyProfiles"> | null> {
-  const familyIds = await getUserFamilyIds(ctx, userId);
-  if (familyIds.length === 0) return null;
-  for (const familyId of familyIds) {
-    const rows = await ctx.db
-      .query("babyProfiles")
-      .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
-      .order("desc")
-      .take(1);
-    if (rows[0]) return rows[0]._id;
-  }
-  return null;
 }
 
 export const getMoraSettings = query({
@@ -89,7 +73,7 @@ async function applyMoraWrite(
   let entityId: string | undefined;
 
   if (actionType === "event.create") {
-    const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, userId));
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
     if (!babyId) throw new Error("No baby profile available");
     await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
     entityId = await ctx.db.insert("events", {
@@ -102,7 +86,7 @@ async function applyMoraWrite(
       createdAt: now,
     });
   } else if (actionType === "note.create") {
-    const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, userId));
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
     if (!babyId) throw new Error("No baby profile available");
     await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
     entityId = await ctx.db.insert("events", {
@@ -133,7 +117,7 @@ async function applyMoraWrite(
     await ctx.db.delete(payload.id as Id<"events">);
     entityId = payload.id;
   } else if (actionType === "reminder.create") {
-    const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, userId));
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
     if (!babyId) throw new Error("No baby profile available");
     await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
     entityId = await ctx.db.insert("reminderRules", {
