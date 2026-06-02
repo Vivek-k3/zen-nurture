@@ -13,13 +13,15 @@ function getConvex(token?: string) {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
-  }
-
+  // Auth first, before any config check, so unauthenticated callers can't
+  // probe server state.
   const token = await getToken();
   if (!token) {
     return Response.json({ error: "Unauthenticated" }, { status: 401 });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
   const { babyId } = await req.json();
@@ -28,6 +30,17 @@ export async function POST(req: Request) {
   }
 
   const convex = getConvex(token);
+
+  // Per-user rate limit (shared cap with the transcribe route).
+  try {
+    await convex.mutation(api.aiHttp.checkAiHttpLimit, {});
+  } catch {
+    return Response.json(
+      { error: "Too many requests. Please wait a moment." },
+      { status: 429 }
+    );
+  }
+
   const profile = await convex.query(api.events.getBabyProfile, { id: babyId });
   const comparison = await convex.query(api.digest.getWeeklyComparison, { babyId });
 

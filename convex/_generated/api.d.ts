@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aiHttp from "../aiHttp.js";
 import type * as auth from "../auth.js";
 import type * as digest from "../digest.js";
 import type * as events from "../events.js";
@@ -34,6 +35,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiHttp: typeof aiHttp;
   auth: typeof auth;
   digest: typeof digest;
   events: typeof events;
