@@ -19,11 +19,40 @@ export const insertUsage = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = new Date().toISOString();
+    const billingPeriod = now.slice(0, 7); // "YYYY-MM"
     await ctx.db.insert("aiUsage", {
       ...args,
-      billingPeriod: now.slice(0, 7), // "YYYY-MM"
+      billingPeriod,
       createdAt: now,
     });
+
+    // Maintain the per-user, per-period rollup incrementally so getMyUsage
+    // reads one row instead of scanning every per-generation row.
+    const existing = await ctx.db
+      .query("aiUsageTotals")
+      .withIndex("by_billingPeriod_userId", (q) =>
+        q.eq("billingPeriod", billingPeriod).eq("userId", args.userId)
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        inputTokens: existing.inputTokens + args.inputTokens,
+        outputTokens: existing.outputTokens + args.outputTokens,
+        totalTokens: existing.totalTokens + args.totalTokens,
+        generations: existing.generations + 1,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("aiUsageTotals", {
+        userId: args.userId,
+        billingPeriod,
+        inputTokens: args.inputTokens,
+        outputTokens: args.outputTokens,
+        totalTokens: args.totalTokens,
+        generations: 1,
+        updatedAt: now,
+      });
+    }
   },
 });
 
@@ -83,22 +112,18 @@ export const getMyUsage = query({
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
     const period = new Date().toISOString().slice(0, 7);
-    const rows = await ctx.db
-      .query("aiUsage")
+    const row = await ctx.db
+      .query("aiUsageTotals")
       .withIndex("by_billingPeriod_userId", (q) =>
         q.eq("billingPeriod", period).eq("userId", user._id)
       )
-      .collect();
-    const totals = rows.reduce(
-      (acc, r) => {
-        acc.inputTokens += r.inputTokens;
-        acc.outputTokens += r.outputTokens;
-        acc.totalTokens += r.totalTokens;
-        acc.generations += 1;
-        return acc;
-      },
-      { inputTokens: 0, outputTokens: 0, totalTokens: 0, generations: 0 }
-    );
-    return { billingPeriod: period, ...totals };
+      .unique();
+    return {
+      billingPeriod: period,
+      inputTokens: row?.inputTokens ?? 0,
+      outputTokens: row?.outputTokens ?? 0,
+      totalTokens: row?.totalTokens ?? 0,
+      generations: row?.generations ?? 0,
+    };
   },
 });

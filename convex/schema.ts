@@ -215,4 +215,17 @@ export default defineSchema({
   })
     .index("by_billingPeriod_userId", ["billingPeriod", "userId"])
     .index("by_userId", ["userId"]),
+
+  // Pre-aggregated per-user, per-billing-period rollup of aiUsage, maintained
+  // incrementally in insertUsage so getMyUsage reads a single row instead of
+  // scanning every per-generation row.
+  aiUsageTotals: defineTable({
+    userId: v.string(),
+    billingPeriod: v.string(), // "YYYY-MM"
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    generations: v.number(),
+    updatedAt: v.string(),
+  }).index("by_billingPeriod_userId", ["billingPeriod", "userId"]),
 });
