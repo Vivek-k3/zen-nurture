@@ -50,7 +50,10 @@ export default function SettingsPage() {
 
   const { data: session } = authClient.useSession();
   const families = useQuery(api.families.listMyFamilies, {});
-  const currentFamily = families?.[0];
+  const babyProfile = useQuery(api.events.getBabyProfile, {});
+  // Scope the family section to the active baby's family (not just families[0]).
+  const currentFamily =
+    families?.find((f) => f?._id === babyProfile?.familyId) ?? families?.[0];
   const familyId = currentFamily?._id;
 
   const familyMembers = useQuery(
@@ -63,7 +66,6 @@ export default function SettingsPage() {
   );
   const myInvitations = useQuery(api.families.listMyInvitations, {});
 
-  const babyProfile = useQuery(api.events.getBabyProfile, {});
   const babyId = babyProfile?._id;
   const exportDataQuery = useQuery(api.events.exportBabyData, babyId ? { babyId } : "skip");
   const caregivers = useQuery(api.events.listCaregivers, babyId ? { babyId } : "skip");
@@ -243,13 +245,10 @@ export default function SettingsPage() {
     }
   };
 
-  const patchMoraSetting = async (
-    field: "enabled" | "yoloMode" | "allowWrites",
-    value: boolean
-  ) => {
+  const patchMoraSetting = async (field: "enabled", value: boolean) => {
     setMoraSaving(field);
     try {
-      await updateMoraSettings({ [field]: value } as any);
+      await updateMoraSettings({ [field]: value });
     } finally {
       setMoraSaving(null);
     }
@@ -462,15 +461,18 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <label htmlFor="baby-gender" className="text-xs font-bold text-muted uppercase tracking-wider">Gender</label>
                   <Select
-                    value={babyForm.gender}
-                    onValueChange={(v) => setBabyForm({ ...babyForm, gender: v })}
+                    value={babyForm.gender || "unspecified"}
+                    onValueChange={(v) =>
+                      setBabyForm({ ...babyForm, gender: v === "unspecified" ? "" : v })
+                    }
                     disabled={!isEditing}
                   >
                     <AppSelectTrigger id="baby-gender">
                       <SelectValue placeholder="Not specified" />
                     </AppSelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Not specified</SelectItem>
+                      {/* Radix forbids an empty-string value; use a sentinel and map to "". */}
+                      <SelectItem value="unspecified">Not specified</SelectItem>
                       <SelectItem value="baby-boy">Baby Boy</SelectItem>
                       <SelectItem value="baby-girl">Baby Girl</SelectItem>
                     </SelectContent>
@@ -778,7 +780,7 @@ export default function SettingsPage() {
             <div>
               <h2 className="text-lg font-bold text-espresso">Mora Settings</h2>
               <p className="text-sm text-muted mt-1">
-                Parent-controlled AI assistant behavior and write permissions.
+                Turn the Mora AI assistant on or off.
               </p>
             </div>
             <div className="h-10 w-10 shrink-0 rounded-full bg-sage/10 text-sage flex items-center justify-center">
@@ -792,22 +794,8 @@ export default function SettingsPage() {
                 key: "enabled",
                 icon: "toggle_on",
                 label: "Enable Mora",
-                help: "Shows the Mora sidebar and enables chat responses.",
+                help: "Shows the Mora sidebar and lets Mora read your data and log or update entries for you.",
                 value: moraSettings?.enabled ?? true,
-              },
-              {
-                key: "yoloMode",
-                icon: "bolt",
-                label: "YOLO Mode",
-                help: "Auto-apply actions without per-action approval.",
-                value: moraSettings?.yoloMode ?? false,
-              },
-              {
-                key: "allowWrites",
-                icon: "edit_note",
-                label: "Allow Writes",
-                help: "Let Mora create, update and delete data.",
-                value: moraSettings?.allowWrites ?? true,
               },
             ].map((item) => (
               <div
@@ -828,23 +816,6 @@ export default function SettingsPage() {
                 />
               </div>
             ))}
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-muted/10 bg-oat/30 p-4">
-            <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5">Allowed Write Scopes</h3>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {["Events", "Reminders", "Notes"].map((scope) => (
-                <span
-                  key={scope}
-                  className="px-3 py-1 rounded-full bg-sage/10 text-sage text-xs font-semibold border border-sage/20"
-                >
-                  {scope}
-                </span>
-              ))}
-            </div>
-            {/* <p className="text-[11px] text-muted">
-              PIN / caregiver role controls are planned for a later version.
-            </p> */}
           </div>
         </section>
 

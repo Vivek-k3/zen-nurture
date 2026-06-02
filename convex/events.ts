@@ -8,6 +8,7 @@ import {
   getUserFamilyIds,
   requireBabyAccess,
 } from "./lib/auth";
+import { getActiveBabyIdForUser, activeBabyKey } from "./lib/baby";
 
 const DEFAULT_CAREGIVER_COLORS = [
   "#7C9A82",
@@ -134,18 +135,40 @@ export const getBabyProfile = query({
       return profile;
     }
 
-    const familyIds = await getUserFamilyIds(ctx, user._id);
-    if (familyIds.length === 0) return null;
+    // No explicit id: return the user's active baby (shared with Mora).
+    const activeId = await getActiveBabyIdForUser(ctx, user._id);
+    return activeId ? await ctx.db.get(activeId) : null;
+  },
+});
 
-    for (const familyId of familyIds) {
-      const profiles = await ctx.db
-        .query("babyProfiles")
-        .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
-        .order("desc")
-        .take(1);
-      if (profiles[0]) return profiles[0];
+/** The user's active baby id (server-persisted selection, else newest). */
+export const getActiveBabyId = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) return null;
+    return await getActiveBabyIdForUser(ctx, user._id);
+  },
+});
+
+/** Persist the user's active baby so the UI and Mora stay in sync. */
+export const setActiveBaby = mutation({
+  args: { babyId: v.id("babyProfiles") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    await requireBabyAccess(ctx, args.babyId, user._id);
+    const key = activeBabyKey(user._id);
+    const existing = (
+      await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .take(1)
+    )[0];
+    if (existing) {
+      await ctx.db.patch(existing._id, { value: { babyId: args.babyId } });
+    } else {
+      await ctx.db.insert("settings", { key, value: { babyId: args.babyId } });
     }
-    return null;
   },
 });
 

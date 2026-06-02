@@ -15,6 +15,9 @@ export const MORA_INSTRUCTIONS = [
   "- Warm, concise, action-oriented. Use tools for factual answers instead of guessing.",
   "- Address the user by first name when known. Reference the baby by name.",
   "",
+  "## Making changes",
+  "- When asked to log, update, or delete something, use the matching tool to do it directly — don't ask for permission first. Then confirm what you did in plain language.",
+  "",
   "## Smart Reminders",
   "- When the user asks about patterns, feeding schedules, or reminders, use analyze_patterns first.",
   "- If you detect a clear interval (e.g. baby feeds every ~2.5h), proactively suggest creating a reminder.",
@@ -320,6 +323,108 @@ const tools = {
         ...comparison,
         hint: "Present this as a friendly weekly digest. Compare this week vs last week. Highlight improvements and flag any concerns.",
       };
+    },
+  }),
+
+  // --- Write tools: apply changes directly (no modes, no approval gate). ---
+
+  create_event: createTool({
+    description: "Create a baby event (feed, diaper, sleep, meds, growth, pump).",
+    inputSchema: z.object({
+      type: z.string(),
+      timestamp: z.string().optional(),
+      payload: z.record(z.string(), z.any()).optional(),
+    }),
+    execute: async (ctx, { type, timestamp, payload }): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "event.create",
+        payload: { type, timestamp, payload },
+      });
+    },
+  }),
+
+  update_event: createTool({
+    description: "Update an existing event by id.",
+    inputSchema: z.object({
+      id: z.string(),
+      timestamp: z.string().optional(),
+      payload: z.record(z.string(), z.any()).optional(),
+    }),
+    execute: async (ctx, { id, timestamp, payload }): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "event.update",
+        payload: { id, timestamp, payload },
+      });
+    },
+  }),
+
+  delete_event: createTool({
+    description: "Delete an event by id.",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async (ctx, { id }): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "event.delete",
+        payload: { id },
+      });
+    },
+  }),
+
+  create_note: createTool({
+    description: "Create a NOTE event in the log.",
+    inputSchema: z.object({ text: z.string().min(1), timestamp: z.string().optional() }),
+    execute: async (ctx, { text, timestamp }): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "note.create",
+        payload: { text, timestamp },
+      });
+    },
+  }),
+
+  create_reminder: createTool({
+    description: "Create a reminder rule.",
+    inputSchema: z.object({
+      title: z.string(),
+      category: z.string().optional(),
+      triggerType: z.string().optional(),
+      triggerConfig: z.record(z.string(), z.any()).optional(),
+      enabled: z.boolean().optional(),
+    }),
+    execute: async (ctx, payload): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "reminder.create",
+        payload,
+      });
+    },
+  }),
+
+  update_reminder: createTool({
+    description: "Update a reminder rule by id.",
+    inputSchema: z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      triggerType: z.string().optional(),
+      triggerConfig: z.record(z.string(), z.any()).optional(),
+      enabled: z.boolean().optional(),
+      quietHoursStart: z.number().optional(),
+      quietHoursEnd: z.number().optional(),
+      snoozeOptions: z.any().optional(),
+    }),
+    execute: async (ctx, payload): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "reminder.update",
+        payload,
+      });
+    },
+  }),
+
+  delete_reminder: createTool({
+    description: "Delete a reminder rule by id.",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async (ctx, { id }): Promise<unknown> => {
+      return await ctx.runMutation(api.mora.moraWrite, {
+        actionType: "reminder.delete",
+        payload: { id },
+      });
     },
   }),
 };

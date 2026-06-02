@@ -1,11 +1,13 @@
 import OpenAI from "openai";
 
-const client = new OpenAI();
-
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
+
+  // Created lazily (not at module scope) so importing the route during build
+  // doesn't throw when OPENAI_API_KEY is absent.
+  const client = new OpenAI();
 
   try {
     const formData = await req.formData();

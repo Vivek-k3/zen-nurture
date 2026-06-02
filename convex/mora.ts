@@ -1,32 +1,22 @@
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { requireAuth, requireBabyAccess, getUserFamilyIds } from "./lib/auth";
+import { requireAuth, requireBabyAccess } from "./lib/auth";
+import { getActiveBabyIdForUser } from "./lib/baby";
 
 const MORA_SETTINGS_KEY = "mora.config";
-const DEFAULT_ALLOWED_SCOPES = ["events", "reminders", "notes"] as const;
 
 type MoraSettings = {
   enabled: boolean;
-  yoloMode: boolean;
-  allowWrites: boolean;
-  allowedWriteScopes: string[];
   updatedAt: string;
 };
 
 function defaultSettings(): MoraSettings {
-  return {
-    enabled: true,
-    yoloMode: false,
-    allowWrites: true,
-    allowedWriteScopes: [...DEFAULT_ALLOWED_SCOPES],
-    updatedAt: new Date().toISOString(),
-  };
+  return { enabled: true, updatedAt: new Date().toISOString() };
 }
 
-async function getSettingsDoc(
-  ctx: Parameters<typeof requireAuth>[0]
-) {
+async function getSettingsDoc(ctx: Parameters<typeof requireAuth>[0]) {
   const rows = await ctx.db
     .query("settings")
     .withIndex("by_key", (q) => q.eq("key", MORA_SETTINGS_KEY))
@@ -41,30 +31,6 @@ async function getResolvedSettings(
   return doc?.value ? { ...defaultSettings(), ...doc.value } : defaultSettings();
 }
 
-async function getLatestBabyProfileIdForUser(
-  ctx: Parameters<typeof getUserFamilyIds>[0],
-  userId: string
-): Promise<Id<"babyProfiles"> | null> {
-  const familyIds = await getUserFamilyIds(ctx, userId);
-  if (familyIds.length === 0) return null;
-  for (const familyId of familyIds) {
-    const rows = await ctx.db
-      .query("babyProfiles")
-      .withIndex("by_familyId", (q) => q.eq("familyId", familyId))
-      .order("desc")
-      .take(1);
-    if (rows[0]) return rows[0]._id;
-  }
-  return null;
-}
-
-function inferScope(actionType: string): "events" | "reminders" | "notes" | "unknown" {
-  if (actionType.startsWith("event.")) return "events";
-  if (actionType.startsWith("reminder.")) return "reminders";
-  if (actionType === "note.create") return "notes";
-  return "unknown";
-}
-
 export const getMoraSettings = query({
   args: {},
   handler: async (ctx) => {
@@ -74,20 +40,11 @@ export const getMoraSettings = query({
 });
 
 export const updateMoraSettings = mutation({
-  args: {
-    enabled: v.optional(v.boolean()),
-    yoloMode: v.optional(v.boolean()),
-    allowWrites: v.optional(v.boolean()),
-    allowedWriteScopes: v.optional(v.array(v.string())),
-  },
+  args: { enabled: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     await requireAuth(ctx);
     const current = await getResolvedSettings(ctx);
-    const next = {
-      ...current,
-      ...args,
-      updatedAt: new Date().toISOString(),
-    };
+    const next = { ...current, ...args, updatedAt: new Date().toISOString() };
     const existing = await getSettingsDoc(ctx);
     if (existing) {
       await ctx.db.patch(existing._id, { value: next });
@@ -98,339 +55,131 @@ export const updateMoraSettings = mutation({
   },
 });
 
-export const getOrCreateMoraThread = mutation({
-  args: {
-    babyId: v.optional(v.id("babyProfiles")),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const babyId = args.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id)) ?? undefined;
-    if (babyId) await requireBabyAccess(ctx, babyId, user._id);
-    const existing = babyId
-      ? await ctx.db
-          .query("moraThreads")
-          .withIndex("by_babyId_lastMessageAt", (q) => q.eq("babyId", babyId))
-          .order("desc")
-          .take(1)
-      : [];
+// ---------------------------------------------------------------------------
+// Mora writes. Mora is a single natural agent — there are no modes and no
+// approval gate. Write tools call `moraWrite`, which applies the change
+// directly and returns the result for Mora to report in its reply.
+// ---------------------------------------------------------------------------
 
-    if (existing[0] && existing[0].status === "active") {
-      return existing[0];
-    }
+type WriteResult = { status: "done"; entityId?: string; summary: string };
 
-    const now = new Date().toISOString();
-    const threadId = await ctx.db.insert("moraThreads", {
+async function applyMoraWrite(
+  ctx: MutationCtx,
+  userId: string,
+  actionType: string,
+  payload: Record<string, any>
+): Promise<WriteResult> {
+  const now = new Date().toISOString();
+  let entityId: string | undefined;
+
+  if (actionType === "event.create") {
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
+    if (!babyId) throw new Error("No baby profile available");
+    await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
+    entityId = await ctx.db.insert("events", {
       babyId,
-      title: "Mora Assistant",
-      status: "active",
-      lastMessageAt: now,
+      type: payload.type,
+      timestamp: payload.timestamp ?? now,
+      caregiverId: payload.caregiverId,
+      payload: payload.payload ?? {},
+      source: "mora",
       createdAt: now,
     });
-
-    const thread = await ctx.db.get(threadId);
-    return thread;
-  },
-});
-
-export const closeMoraThread = mutation({
-  args: { threadId: v.id("moraThreads") },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread) return;
-    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-    await ctx.db.patch(args.threadId, { status: "closed" });
-  },
-});
-
-export const listMoraMessages = query({
-  args: {
-    threadId: v.id("moraThreads"),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread) return { cursor: null, page: [] };
-    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-    const limit = Math.min(args.limit ?? 100, 500);
-    const rows = await ctx.db
-      .query("moraMessages")
-      .withIndex("by_threadId_createdAt", (q) => q.eq("threadId", args.threadId))
-      .order("asc")
-      .take(limit);
-    return {
-      cursor: null,
-      page: rows,
-    };
-  },
-});
-
-export const listPendingMoraActions = query({
-  args: {
-    threadId: v.id("moraThreads"),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread) return [];
-    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-    return await ctx.db
-      .query("moraActions")
-      .withIndex("by_threadId_status_createdAt", (q) =>
-        q.eq("threadId", args.threadId).eq("status", "pending")
-      )
-      .order("desc")
-      .collect();
-  },
-});
-
-export const createMoraMessage = mutation({
-  args: {
-    threadId: v.id("moraThreads"),
-    role: v.string(),
-    parts: v.any(),
-    text: v.optional(v.string()),
-    routeContext: v.optional(
-      v.object({
-        pathname: v.string(),
-        pageLabel: v.string(),
-      })
-    ),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread) throw new Error("Thread not found");
-    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-    const now = new Date().toISOString();
-    const id = await ctx.db.insert("moraMessages", {
-      ...args,
+  } else if (actionType === "note.create") {
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
+    if (!babyId) throw new Error("No baby profile available");
+    await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
+    entityId = await ctx.db.insert("events", {
+      babyId,
+      type: "NOTE",
+      timestamp: payload.timestamp ?? now,
+      payload: { text: payload.text ?? "" },
+      source: "mora",
       createdAt: now,
     });
-    await ctx.db.patch(args.threadId, {
-      lastMessageAt: now,
+  } else if (actionType === "event.update") {
+    if (!payload.id) throw new Error("event.update missing id");
+    const existing = await ctx.db.get(payload.id as Id<"events">);
+    if (!existing) throw new Error("Event not found");
+    await requireBabyAccess(ctx, existing.babyId, userId);
+    await ctx.db.patch(payload.id, {
+      timestamp: payload.timestamp ?? existing.timestamp,
+      caregiverId: payload.caregiverId ?? existing.caregiverId,
+      payload: payload.payload ?? existing.payload,
+      updatedAt: now,
     });
-    return id;
-  },
-});
-
-export const createPendingMoraAction = mutation({
-  args: {
-    threadId: v.id("moraThreads"),
-    actionType: v.string(),
-    payload: v.any(),
-    preview: v.string(),
-    requiresApproval: v.boolean(),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread) throw new Error("Thread not found");
-    if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-    const now = new Date().toISOString();
-    const id = await ctx.db.insert("moraActions", {
-      ...args,
-      status: args.requiresApproval ? "pending" : "approved",
-      approvedAt: args.requiresApproval ? undefined : now,
+    entityId = payload.id;
+  } else if (actionType === "event.delete") {
+    if (!payload.id) throw new Error("event.delete missing id");
+    const existing = await ctx.db.get(payload.id as Id<"events">);
+    if (!existing) throw new Error("Event not found");
+    await requireBabyAccess(ctx, existing.babyId, userId);
+    await ctx.db.delete(payload.id as Id<"events">);
+    entityId = payload.id;
+  } else if (actionType === "reminder.create") {
+    const babyId = payload.babyId ?? (await getActiveBabyIdForUser(ctx, userId));
+    if (!babyId) throw new Error("No baby profile available");
+    await requireBabyAccess(ctx, babyId as Id<"babyProfiles">, userId);
+    entityId = await ctx.db.insert("reminderRules", {
+      babyId,
+      category: payload.category ?? "custom",
+      title: payload.title ?? "Reminder",
+      triggerType: payload.triggerType ?? "fixedTimes",
+      triggerConfig: payload.triggerConfig ?? { times: ["09:00"] },
+      enabled: payload.enabled ?? true,
+      quietHoursStart: payload.quietHoursStart,
+      quietHoursEnd: payload.quietHoursEnd,
+      snoozeOptions: payload.snoozeOptions,
       createdAt: now,
     });
-    await ctx.db.patch(args.threadId, { lastMessageAt: now });
-    return await ctx.db.get(id);
-  },
-});
+  } else if (actionType === "reminder.update") {
+    if (!payload.id) throw new Error("reminder.update missing id");
+    const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
+    if (!existing) throw new Error("Reminder not found");
+    await requireBabyAccess(ctx, existing.babyId, userId);
+    // Whitelist mutable fields only. payload is v.any() from the client, so a
+    // blind spread would let it overwrite babyId (moving the reminder to
+    // another baby, unauthorized) or tamper with createdAt.
+    const REMINDER_UPDATABLE = [
+      "category",
+      "title",
+      "triggerType",
+      "triggerConfig",
+      "enabled",
+      "quietHoursStart",
+      "quietHoursEnd",
+      "snoozeOptions",
+    ] as const;
+    const updates: Record<string, any> = {};
+    for (const key of REMINDER_UPDATABLE) {
+      if (payload[key] !== undefined) updates[key] = payload[key];
+    }
+    await ctx.db.patch(payload.id as Id<"reminderRules">, updates);
+    entityId = payload.id;
+  } else if (actionType === "reminder.delete") {
+    if (!payload.id) throw new Error("reminder.delete missing id");
+    const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
+    if (!existing) throw new Error("Reminder not found");
+    await requireBabyAccess(ctx, existing.babyId, userId);
+    await ctx.db.delete(payload.id as Id<"reminderRules">);
+    entityId = payload.id;
+  } else {
+    throw new Error(`Unsupported action type: ${actionType}`);
+  }
 
-async function verifyMoraActionAccess(
-  ctx: Parameters<typeof requireAuth>[0],
-  actionId: Id<"moraActions">
-) {
-  const user = await requireAuth(ctx);
-  const action = await ctx.db.get(actionId);
-  if (!action) throw new Error("Action not found");
-  const thread = await ctx.db.get(action.threadId);
-  if (!thread) throw new Error("Thread not found");
-  if (thread.babyId) await requireBabyAccess(ctx, thread.babyId, user._id);
-  return { user, action };
+  return { status: "done", entityId, summary: `${actionType.replace(/\./g, " ")} done` };
 }
 
-export const approveMoraAction = mutation({
-  args: { actionId: v.id("moraActions") },
-  handler: async (ctx, args) => {
-    const { action } = await verifyMoraActionAccess(ctx, args.actionId);
-    if (action.status !== "pending") return action;
-    const now = new Date().toISOString();
-    await ctx.db.patch(args.actionId, { status: "approved", approvedAt: now });
-    return await ctx.db.get(args.actionId);
-  },
-});
-
-export const rejectMoraAction = mutation({
+/** Entry point used by Mora write tools: apply a write immediately. */
+export const moraWrite = mutation({
   args: {
-    actionId: v.id("moraActions"),
-    reason: v.optional(v.string()),
+    actionType: v.string(),
+    payload: v.any(),
   },
-  handler: async (ctx, args) => {
-    await verifyMoraActionAccess(ctx, args.actionId);
-    const action = await ctx.db.get(args.actionId);
-    if (!action) throw new Error("Action not found");
-    await ctx.db.patch(args.actionId, {
-      status: "rejected",
-      error: args.reason ?? "Rejected by user",
-    });
-    return await ctx.db.get(args.actionId);
-  },
-});
-
-export const markMoraActionExecuted = mutation({
-  args: {
-    actionId: v.id("moraActions"),
-    result: v.optional(v.any()),
-  },
-  handler: async (ctx, args) => {
-    await verifyMoraActionAccess(ctx, args.actionId);
-    const now = new Date().toISOString();
-    await ctx.db.patch(args.actionId, {
-      status: "executed",
-      executedAt: now,
-      result: args.result,
-      error: undefined,
-    });
-    return await ctx.db.get(args.actionId);
-  },
-});
-
-export const markMoraActionFailed = mutation({
-  args: {
-    actionId: v.id("moraActions"),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await verifyMoraActionAccess(ctx, args.actionId);
-    await ctx.db.patch(args.actionId, {
-      status: "failed",
-      error: args.error,
-    });
-    return await ctx.db.get(args.actionId);
-  },
-});
-
-export const executeApprovedMoraAction = mutation({
-  args: {
-    actionId: v.id("moraActions"),
-  },
-  handler: async (ctx, args) => {
-    const { user } = await verifyMoraActionAccess(ctx, args.actionId);
-    const action = await ctx.db.get(args.actionId);
-    if (!action) throw new Error("Action not found");
-    if (!["approved", "pending"].includes(action.status)) {
-      throw new Error(`Action status ${action.status} cannot be executed`);
-    }
-
+  handler: async (ctx, args): Promise<WriteResult | { status: "blocked"; reason: string }> => {
+    const user = await requireAuth(ctx);
     const settings = await getResolvedSettings(ctx);
-    if (!settings.enabled) throw new Error("Mora is disabled");
-    if (!settings.allowWrites) throw new Error("Mora writes are disabled");
-
-    const scope = inferScope(action.actionType);
-    if (scope === "unknown" || !settings.allowedWriteScopes.includes(scope)) {
-      throw new Error(`Action scope not allowed: ${scope}`);
-    }
-
-    const payload = (action.payload ?? {}) as Record<string, any>;
-    const now = new Date().toISOString();
-
-    let entityId: string | undefined;
-
-    if (action.actionType === "event.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
-      if (!babyId) throw new Error("No baby profile available");
-      entityId = await ctx.db.insert("events", {
-        babyId,
-        type: payload.type,
-        timestamp: payload.timestamp ?? now,
-        caregiverId: payload.caregiverId,
-        payload: payload.payload ?? {},
-        source: "mora",
-        createdAt: now,
-      });
-    } else if (action.actionType === "note.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
-      if (!babyId) throw new Error("No baby profile available");
-      entityId = await ctx.db.insert("events", {
-        babyId,
-        type: "NOTE",
-        timestamp: payload.timestamp ?? now,
-        payload: { text: payload.text ?? "" },
-        source: "mora",
-        createdAt: now,
-      });
-    } else if (action.actionType === "event.update") {
-      if (!payload.id) throw new Error("event.update missing id");
-      const existing = await ctx.db.get(payload.id as Id<"events">);
-      if (!existing) throw new Error("Event not found");
-      await requireBabyAccess(ctx, existing.babyId, user._id);
-      await ctx.db.patch(payload.id, {
-        timestamp: payload.timestamp ?? existing.timestamp,
-        caregiverId: payload.caregiverId ?? existing.caregiverId,
-        payload: payload.payload ?? existing.payload,
-        updatedAt: now,
-      });
-      entityId = payload.id;
-    } else if (action.actionType === "event.delete") {
-      if (!payload.id) throw new Error("event.delete missing id");
-      const existing = await ctx.db.get(payload.id as Id<"events">);
-      if (!existing) throw new Error("Event not found");
-      await requireBabyAccess(ctx, existing.babyId, user._id);
-      await ctx.db.delete(payload.id as Id<"events">);
-      entityId = payload.id;
-    } else if (action.actionType === "reminder.create") {
-      const babyId = payload.babyId ?? (await getLatestBabyProfileIdForUser(ctx, user._id));
-      if (!babyId) throw new Error("No baby profile available");
-      entityId = await ctx.db.insert("reminderRules", {
-        babyId,
-        category: payload.category ?? "custom",
-        title: payload.title ?? "Reminder",
-        triggerType: payload.triggerType ?? "fixedTimes",
-        triggerConfig: payload.triggerConfig ?? { times: ["09:00"] },
-        enabled: payload.enabled ?? true,
-        quietHoursStart: payload.quietHoursStart,
-        quietHoursEnd: payload.quietHoursEnd,
-        snoozeOptions: payload.snoozeOptions,
-        createdAt: now,
-      });
-    } else if (action.actionType === "reminder.update") {
-      if (!payload.id) throw new Error("reminder.update missing id");
-      const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
-      if (!existing) throw new Error("Reminder not found");
-      await requireBabyAccess(ctx, existing.babyId, user._id);
-      const { id, ...updates } = payload;
-      await ctx.db.patch(id as Id<"reminderRules">, updates);
-      entityId = id;
-    } else if (action.actionType === "reminder.delete") {
-      if (!payload.id) throw new Error("reminder.delete missing id");
-      const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
-      if (!existing) throw new Error("Reminder not found");
-      await requireBabyAccess(ctx, existing.babyId, user._id);
-      await ctx.db.delete(payload.id as Id<"reminderRules">);
-      entityId = payload.id;
-    } else {
-      throw new Error(`Unsupported action type: ${action.actionType}`);
-    }
-
-    const result = {
-      status: "executed" as const,
-      actionId: action._id,
-      entityId,
-      summary: `${action.actionType} executed`,
-    };
-
-    await ctx.db.patch(action._id, {
-      status: "executed",
-      executedAt: now,
-      result,
-      error: undefined,
-    });
-
-    return result;
+    if (!settings.enabled) return { status: "blocked", reason: "Mora is disabled in Settings." };
+    return await applyMoraWrite(ctx, user._id, args.actionType, (args.payload ?? {}) as Record<string, any>);
   },
 });

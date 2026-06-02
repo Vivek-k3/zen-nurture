@@ -14,6 +14,7 @@ import type * as events from "../events.js";
 import type * as families from "../families.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_baby from "../lib/baby.js";
 import type * as milestones from "../milestones.js";
 import type * as mora from "../mora.js";
 import type * as moraAgent from "../moraAgent.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   families: typeof families;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/baby": typeof lib_baby;
   milestones: typeof milestones;
   mora: typeof mora;
   moraAgent: typeof moraAgent;

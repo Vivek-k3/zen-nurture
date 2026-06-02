@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { POP_CULTURE_FAMILY_NAMES } from "@/lib/family-names";
 import { useGenderThemeType } from "@/components/GenderTheme";
 import Link from "next/link";
@@ -26,7 +27,7 @@ export default function AddBabyPage() {
   const [step, setStep] = useState<Step>("family");
   const [familyName, setFamilyName] = useState("");
   const [diceSpinning, setDiceSpinning] = useState(false);
-  const [resolvedFamilyId, setResolvedFamilyId] = useState<string | null>(null);
+  const [resolvedFamilyId, setResolvedFamilyId] = useState<Id<"families"> | null>(null);
 
   const [babyName, setBabyName] = useState("");
   const [babyDob, setBabyDob] = useState("");
