@@ -4,13 +4,15 @@ import { rateLimiter } from "./rateLimiter";
 
 /**
  * Per-user rate-limit gate for the Next AI HTTP routes (transcribe, digest).
- * Throws when the limit is exceeded; the calling route maps that to a 429.
+ * Returns `{ limited: true }` when the limit is exceeded so the caller can map
+ * only that case to a 429. Auth failures and internal errors propagate (the
+ * route turns them into 401/500) rather than masquerading as "too many requests".
  */
 export const checkAiHttpLimit = mutation({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<{ limited: boolean }> => {
     const user = await requireAuth(ctx);
-    await rateLimiter.limit(ctx, "aiHttpRoute", { key: user._id, throws: true });
-    return null;
+    const { ok } = await rateLimiter.limit(ctx, "aiHttpRoute", { key: user._id });
+    return { limited: !ok };
   },
 });

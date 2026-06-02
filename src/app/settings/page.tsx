@@ -239,14 +239,17 @@ export default function SettingsPage() {
   const handleClearData = async () => {
     if (!babyProfile?._id) return;
     const name = (babyProfile.name || "").trim();
+    // Fall back to a fixed token when the baby has no name, so the typed
+    // confirmation is still satisfiable instead of silently no-op'ing.
+    const confirmToken = name || "DELETE";
 
     // Typed confirmation (not a single OK) + an export-first nudge, since this
     // hard-deletes all events/reminders/caregivers with no recovery.
     const typed = prompt(
-      `This permanently deletes ALL events, reminders, and caregivers for ${name || "this baby"}. It cannot be undone — export your data first if you want a backup.\n\nType the baby's name (${name || "—"}) to confirm:`
+      `This permanently deletes ALL events, reminders, and caregivers for ${name || "this baby"}. It cannot be undone — export your data first if you want a backup.\n\nType ${name ? `the baby's name (${name})` : `"${confirmToken}"`} to confirm:`
     );
     if (typed === null) return; // cancelled
-    if (!name || typed.trim() !== name) return; // mismatch → safe no-op
+    if (typed.trim() !== confirmToken) return; // mismatch → safe no-op
 
     await clearData({ babyId: babyProfile._id });
     window.location.reload();

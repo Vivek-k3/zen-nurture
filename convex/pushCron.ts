@@ -120,6 +120,7 @@ export const logDeliveries = httpAction(async (ctx, request) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  type DeliveryStatus = "sent" | "failed" | "expired";
   let body: {
     deliveries?: Array<{
       endpoint: string;
@@ -139,7 +140,14 @@ export const logDeliveries = httpAction(async (ctx, request) => {
     });
   }
 
-  const deliveries = body.deliveries ?? [];
+  const allowed: ReadonlySet<DeliveryStatus> = new Set(["sent", "failed", "expired"]);
+  // Drop anything whose status isn't one of the three valid states — the table
+  // only accepts those literals, and silently persisting garbage would make the
+  // by_status index unreliable.
+  const deliveries = (body.deliveries ?? [])
+    .filter((d): d is typeof d & { status: DeliveryStatus } =>
+      allowed.has(d.status as DeliveryStatus)
+    );
   if (deliveries.length > 0) {
     await ctx.runMutation(internal.push.recordDeliveries, { deliveries });
   }

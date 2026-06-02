@@ -34,10 +34,19 @@ export async function POST(req: Request) {
 
   const convex = getConvex(token);
 
-  // Per-user rate limit (shared cap with the transcribe route).
+  // Per-user rate limit (shared cap with the transcribe route). Only a real
+  // limiter hit maps to 429; auth/internal failures surface as 500 instead of
+  // masquerading as "too many requests".
+  let limited = false;
   try {
-    await convex.mutation(api.aiHttp.checkAiHttpLimit, {});
-  } catch {
+    ({ limited } = await convex.mutation(api.aiHttp.checkAiHttpLimit, {}));
+  } catch (err: any) {
+    return Response.json(
+      { error: err?.message || "Rate limit check failed" },
+      { status: 500 }
+    );
+  }
+  if (limited) {
     return Response.json(
       { error: "Too many requests. Please wait a moment." },
       { status: 429 }

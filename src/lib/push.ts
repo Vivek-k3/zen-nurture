@@ -60,13 +60,20 @@ export async function logDeliveries(
   deliveries: DeliveryOutcome[]
 ): Promise<void> {
   if (deliveries.length === 0) return;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    await fetch(`${convexSiteUrl}/api/push/cron-log-deliveries`, {
+    const res = await fetch(`${convexSiteUrl}/api/push/cron-log-deliveries`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cronSecret}` },
       body: JSON.stringify({ deliveries }),
+      signal: controller.signal,
     });
+    if (!res.ok) throw new Error(`Failed to log deliveries: ${res.status}`);
   } catch {
-    // Logging is best-effort; a failure here must not affect notification delivery.
+    // Logging is best-effort; a failure here (timeout, non-2xx, network) must
+    // not affect notification delivery.
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

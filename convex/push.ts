@@ -137,7 +137,7 @@ export const recordDeliveries = internalMutation({
       v.object({
         endpoint: v.string(),
         userId: v.optional(v.string()),
-        status: v.string(),
+        status: v.union(v.literal("sent"), v.literal("failed"), v.literal("expired")),
         attempts: v.number(),
         title: v.optional(v.string()),
         error: v.optional(v.string()),

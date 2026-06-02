@@ -81,6 +81,9 @@ export async function POST(req: Request) {
     }
 
     const deliveries: DeliveryOutcome[] = [];
+    // Once an endpoint is gone, don't keep hammering it for later reminders in
+    // the same run — that just amplifies failed sends and repeat unsubscribes.
+    const expiredEndpoints = new Set<string>();
     for (const reminder of toNotify) {
       const title = reminder.isOverdue
         ? `Overdue: ${reminder.rule.title}`
@@ -95,6 +98,8 @@ export async function POST(req: Request) {
       });
 
       for (const sub of subscriptions) {
+        if (expiredEndpoints.has(sub.endpoint)) continue;
+
         const outcome = await sendWithRetry(
           { endpoint: sub.endpoint, keys: sub.keys, userId: sub.userId },
           payload
@@ -103,14 +108,20 @@ export async function POST(req: Request) {
         deliveries.push(outcome);
 
         if (outcome.status === "expired") {
-          await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${CRON_SECRET}`,
-            },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          }, FETCH_TIMEOUT_MS);
+          expiredEndpoints.add(sub.endpoint);
+          // Best-effort: a failed/stalled cleanup must not abort the route.
+          try {
+            await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${CRON_SECRET}`,
+              },
+              body: JSON.stringify({ endpoint: sub.endpoint }),
+            }, FETCH_TIMEOUT_MS);
+          } catch {
+            // best-effort cleanup
+          }
         }
       }
     }

@@ -5,9 +5,35 @@ const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY!;
 const CRON_SECRET = process.env.CRON_SECRET;
 const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL!;
+const UNSUBSCRIBE_TIMEOUT_MS = 5000;
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(`mailto:noreply@zennurture.app`, VAPID_PUBLIC, VAPID_PRIVATE);
+}
+
+/**
+ * Best-effort, time-bounded cleanup of an expired endpoint. By the time this
+ * runs the send outcome is already final, so a failure or stall here must not
+ * abort the route (which would skip logDeliveries and return 500).
+ */
+async function unsubscribeExpired(endpoint: string): Promise<void> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), UNSUBSCRIBE_TIMEOUT_MS);
+  try {
+    await fetch(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${CRON_SECRET}`,
+      },
+      body: JSON.stringify({ endpoint }),
+      signal: controller.signal,
+    });
+  } catch {
+    // best-effort cleanup
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function POST(req: Request) {
@@ -58,14 +84,7 @@ export async function POST(req: Request) {
       deliveries.push(outcome);
 
       if (outcome.status === "expired") {
-        await fetch(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${CRON_SECRET}`,
-          },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
-        });
+        await unsubscribeExpired(sub.endpoint);
       }
     }
 
