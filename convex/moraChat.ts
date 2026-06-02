@@ -117,10 +117,13 @@ export const streamChat = action({
     await rateLimiter.limit(ctx, "sendMessage", { key: userId, throws: true });
     await rateLimiter.limit(ctx, "globalSendMessage", { throws: true });
 
-    // Block when a token budget is already exhausted — prior generations
-    // drive these buckets negative via reserve:true in moraUsageHandler.
-    await rateLimiter.limit(ctx, "tokenUsagePerUser", { key: userId, throws: true });
-    await rateLimiter.limit(ctx, "globalTokenUsage", { throws: true });
+    // Block when a token budget is already exhausted — prior generations drive
+    // these buckets negative via reserve:true in moraUsageHandler. Use check()
+    // (read-only) rather than limit() so the gate does NOT itself consume a
+    // token: the actual spend is reserved post-generation in moraUsageHandler,
+    // which is the single source of truth for token charging.
+    await rateLimiter.check(ctx, "tokenUsagePerUser", { key: userId, throws: true });
+    await rateLimiter.check(ctx, "globalTokenUsage", { throws: true });
 
     // The "Enable Mora" toggle is authoritative: a disabled Mora must not
     // produce chat responses, even via direct action calls.
