@@ -137,9 +137,25 @@ async function applyMoraWrite(
     const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
     if (!existing) throw new Error("Reminder not found");
     await requireBabyAccess(ctx, existing.babyId, userId);
-    const { id, ...updates } = payload;
-    await ctx.db.patch(id as Id<"reminderRules">, updates);
-    entityId = id;
+    // Whitelist mutable fields only. payload is v.any() from the client, so a
+    // blind spread would let it overwrite babyId (moving the reminder to
+    // another baby, unauthorized) or tamper with createdAt.
+    const REMINDER_UPDATABLE = [
+      "category",
+      "title",
+      "triggerType",
+      "triggerConfig",
+      "enabled",
+      "quietHoursStart",
+      "quietHoursEnd",
+      "snoozeOptions",
+    ] as const;
+    const updates: Record<string, any> = {};
+    for (const key of REMINDER_UPDATABLE) {
+      if (payload[key] !== undefined) updates[key] = payload[key];
+    }
+    await ctx.db.patch(payload.id as Id<"reminderRules">, updates);
+    entityId = payload.id;
   } else if (actionType === "reminder.delete") {
     if (!payload.id) throw new Error("reminder.delete missing id");
     const existing = await ctx.db.get(payload.id as Id<"reminderRules">);
