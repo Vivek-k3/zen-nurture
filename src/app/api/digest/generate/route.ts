@@ -2,6 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { getToken } from "@/lib/auth";
 
 function getConvex(token?: string) {
@@ -24,10 +25,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
-  const { babyId } = await req.json();
-  if (!babyId) {
-    return Response.json({ error: "babyId required" }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const rawBabyId = body?.babyId;
+  if (!rawBabyId || typeof rawBabyId !== "string") {
+    return Response.json({ error: "babyId (string) required" }, { status: 400 });
   }
+  const babyId = rawBabyId as Id<"babyProfiles">;
 
   const convex = getConvex(token);
 
@@ -50,6 +53,16 @@ export async function POST(req: Request) {
 
   const { thisWeek, lastWeek } = comparison;
 
+  // The baby name is user-controlled — treat it as untrusted data in the prompt.
+  // Strip newlines/control chars, restrict to name-ish characters, and cap the
+  // length so it can't inject prompt instructions.
+  const safeName =
+    (profile?.name || "baby")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[^\p{L}\p{N}\s'.-]/gu, "")
+      .slice(0, 40)
+      .trim() || "baby";
+
   const genderHint =
     profile?.gender === "baby-boy"
       ? "Use he/him when referring to the baby."
@@ -59,7 +72,7 @@ export async function POST(req: Request) {
 
   const prompt = [
     `You are Mora, the AI copilot in Zen Nurture, a baby care tracker.`,
-    `Generate a warm, concise weekly digest for ${profile?.name || "baby"}.`,
+    `Generate a warm, concise weekly digest for ${safeName}.`,
     `${genderHint}`,
     ``,
     `## This Week (${thisWeek.from} to ${thisWeek.to})`,
