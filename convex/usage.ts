@@ -52,15 +52,29 @@ export const moraUsageHandler: UsageHandler = async (ctx, args) => {
   // up-front gates in moraChat.streamChat then block the next request until
   // the bucket refills ("blocking further requests until repaid").
   const tokens = usage.totalTokens ?? 0;
-  await rateLimiter.limit(ctx, "tokenUsagePerUser", {
+  const perUser = await rateLimiter.limit(ctx, "tokenUsagePerUser", {
     key: userId,
     count: tokens,
     reserve: true,
   });
-  await rateLimiter.limit(ctx, "globalTokenUsage", {
+  const global = await rateLimiter.limit(ctx, "globalTokenUsage", {
     count: tokens,
     reserve: true,
   });
+
+  // reserve:true never rejects here (it drives the bucket negative so the
+  // up-front gates in streamChat block the next request). Surface the result
+  // rather than ignoring it: a retryAfter means the budget is now exhausted.
+  if (!perUser.ok || perUser.retryAfter) {
+    console.warn(
+      `[mora] per-user token budget exhausted for ${userId}; next request blocked for ~${perUser.retryAfter ?? 0}ms`
+    );
+  }
+  if (!global.ok || global.retryAfter) {
+    console.warn(
+      `[mora] global token budget exhausted; next request blocked for ~${global.retryAfter ?? 0}ms`
+    );
+  }
 };
 
 /** Current billing period's token usage for the authenticated user. */
