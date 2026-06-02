@@ -198,4 +198,34 @@ export default defineSchema({
     .index("by_threadId_createdAt", ["threadId", "createdAt"])
     .index("by_threadId_status_createdAt", ["threadId", "status", "createdAt"])
     .index("by_status", ["status"]),
+
+  // Per-generation token/cost usage ("AI events"), recorded by the agent's
+  // usageHandler. Aggregated per billing period for spend tracking.
+  aiUsage: defineTable({
+    userId: v.string(),
+    agentName: v.optional(v.string()),
+    model: v.string(),
+    provider: v.string(),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    threadId: v.optional(v.string()),
+    billingPeriod: v.string(), // "YYYY-MM"
+    createdAt: v.string(),
+  })
+    .index("by_billingPeriod_userId", ["billingPeriod", "userId"])
+    .index("by_userId", ["userId"]),
+
+  // Pre-aggregated per-user, per-billing-period rollup of aiUsage, maintained
+  // incrementally in insertUsage so getMyUsage reads a single row instead of
+  // scanning every per-generation row.
+  aiUsageTotals: defineTable({
+    userId: v.string(),
+    billingPeriod: v.string(), // "YYYY-MM"
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    generations: v.number(),
+    updatedAt: v.string(),
+  }).index("by_billingPeriod_userId", ["billingPeriod", "userId"]),
 });
