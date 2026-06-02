@@ -12,6 +12,8 @@ import { components } from "./_generated/api";
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // ~1 message / 3s per user, small burst.
   sendMessage: { kind: "fixed window", period: 3 * SECOND, rate: 1, capacity: 3 },
+  // Per-user cap for the Next AI HTTP routes (transcribe, digest): 10/min, burst 15.
+  aiHttpRoute: { kind: "fixed window", period: MINUTE, rate: 10, capacity: 15 },
   // Per-user token budget: 20k tokens/min, burst up to 50k.
   tokenUsagePerUser: {
     kind: "token bucket",

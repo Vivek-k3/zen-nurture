@@ -2,6 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { getToken } from "@/lib/auth";
 
 function getConvex(token?: string) {
@@ -13,21 +14,45 @@ function getConvex(token?: string) {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
-  }
-
+  // Auth first, before any config check, so unauthenticated callers can't
+  // probe server state.
   const token = await getToken();
   if (!token) {
     return Response.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
-  const { babyId } = await req.json();
-  if (!babyId) {
-    return Response.json({ error: "babyId required" }, { status: 400 });
+  if (!process.env.OPENAI_API_KEY) {
+    return Response.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
+  const body = await req.json().catch(() => null);
+  const rawBabyId = body?.babyId;
+  if (!rawBabyId || typeof rawBabyId !== "string") {
+    return Response.json({ error: "babyId (string) required" }, { status: 400 });
+  }
+  const babyId = rawBabyId as Id<"babyProfiles">;
+
   const convex = getConvex(token);
+
+  // Per-user rate limit (shared cap with the transcribe route). Only a real
+  // limiter hit maps to 429; auth/internal failures surface as 500 instead of
+  // masquerading as "too many requests".
+  let limited = false;
+  try {
+    ({ limited } = await convex.mutation(api.aiHttp.checkAiHttpLimit, {}));
+  } catch (err: any) {
+    return Response.json(
+      { error: err?.message || "Rate limit check failed" },
+      { status: 500 }
+    );
+  }
+  if (limited) {
+    return Response.json(
+      { error: "Too many requests. Please wait a moment." },
+      { status: 429 }
+    );
+  }
+
   const profile = await convex.query(api.events.getBabyProfile, { id: babyId });
   const comparison = await convex.query(api.digest.getWeeklyComparison, { babyId });
 
@@ -36,6 +61,16 @@ export async function POST(req: Request) {
   }
 
   const { thisWeek, lastWeek } = comparison;
+
+  // The baby name is user-controlled — treat it as untrusted data in the prompt.
+  // Strip newlines/control chars, restrict to name-ish characters, and cap the
+  // length so it can't inject prompt instructions.
+  const safeName =
+    (profile?.name || "baby")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[^\p{L}\p{N}\s'.-]/gu, "")
+      .slice(0, 40)
+      .trim() || "baby";
 
   const genderHint =
     profile?.gender === "baby-boy"
@@ -46,7 +81,7 @@ export async function POST(req: Request) {
 
   const prompt = [
     `You are Mora, the AI copilot in Zen Nurture, a baby care tracker.`,
-    `Generate a warm, concise weekly digest for ${profile?.name || "baby"}.`,
+    `Generate a warm, concise weekly digest for ${safeName}.`,
     `${genderHint}`,
     ``,
     `## This Week (${thisWeek.from} to ${thisWeek.to})`,

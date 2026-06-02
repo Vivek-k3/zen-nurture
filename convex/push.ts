@@ -129,3 +129,25 @@ export const listSubscriptionsForFamily = internalQuery({
     return subs;
   },
 });
+
+/** Record push delivery outcomes (batched) for visibility into failures. */
+export const recordDeliveries = internalMutation({
+  args: {
+    deliveries: v.array(
+      v.object({
+        endpoint: v.string(),
+        userId: v.optional(v.string()),
+        status: v.union(v.literal("sent"), v.literal("failed"), v.literal("expired")),
+        attempts: v.number(),
+        title: v.optional(v.string()),
+        error: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, { deliveries }) => {
+    const now = new Date().toISOString();
+    for (const d of deliveries) {
+      await ctx.db.insert("pushDeliveries", { ...d, createdAt: now });
+    }
+  },
+});

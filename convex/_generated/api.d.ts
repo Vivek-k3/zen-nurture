@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aiHttp from "../aiHttp.js";
 import type * as auth from "../auth.js";
 import type * as digest from "../digest.js";
 import type * as events from "../events.js";
@@ -20,7 +21,6 @@ import type * as mora from "../mora.js";
 import type * as moraAgent from "../moraAgent.js";
 import type * as moraChat from "../moraChat.js";
 import type * as nudges from "../nudges.js";
-import type * as patchOrphanBabies from "../patchOrphanBabies.js";
 import type * as photos from "../photos.js";
 import type * as push from "../push.js";
 import type * as pushCron from "../pushCron.js";
@@ -34,6 +34,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiHttp: typeof aiHttp;
   auth: typeof auth;
   digest: typeof digest;
   events: typeof events;
@@ -46,7 +47,6 @@ declare const fullApi: ApiFromModules<{
   moraAgent: typeof moraAgent;
   moraChat: typeof moraChat;
   nudges: typeof nudges;
-  patchOrphanBabies: typeof patchOrphanBabies;
   photos: typeof photos;
   push: typeof push;
   pushCron: typeof pushCron;

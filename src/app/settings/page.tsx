@@ -238,11 +238,21 @@ export default function SettingsPage() {
 
   const handleClearData = async () => {
     if (!babyProfile?._id) return;
+    const name = (babyProfile.name || "").trim();
+    // Fall back to a fixed token when the baby has no name, so the typed
+    // confirmation is still satisfiable instead of silently no-op'ing.
+    const confirmToken = name || "DELETE";
 
-    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
-      await clearData({ babyId: babyProfile._id });
-      window.location.reload();
-    }
+    // Typed confirmation (not a single OK) + an export-first nudge, since this
+    // hard-deletes all events/reminders/caregivers with no recovery.
+    const typed = prompt(
+      `This permanently deletes ALL events, reminders, and caregivers for ${name || "this baby"}. It cannot be undone — export your data first if you want a backup.\n\nType ${name ? `the baby's name (${name})` : `"${confirmToken}"`} to confirm:`
+    );
+    if (typed === null) return; // cancelled
+    if (typed.trim() !== confirmToken) return; // mismatch → safe no-op
+
+    await clearData({ babyId: babyProfile._id });
+    window.location.reload();
   };
 
   const patchMoraSetting = async (field: "enabled", value: boolean) => {

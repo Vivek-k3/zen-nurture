@@ -159,12 +159,14 @@ export function TrendsMetricDrawer({
 }: TrendsMetricDrawerProps) {
   const [tab, setTab] = useState<"calendar" | "graph" | "entries">("calendar");
   const config = METRIC_CONFIG[metricId];
-  if (!config) return null;
 
+  // Hooks must run unconditionally — query first, then bail if the metric is unknown.
   const dayEvents = useQuery(
     api.events.getEventsForRange,
     open && babyId ? { babyId, from: fromISO, to: toISO, types: ["FEED_BOTTLE", "FEED_BREAST", "PUMP", "DIAPER", "SLEEP", "MED_DOSE", "VACCINE_DOSE"], limit: 500 } : "skip"
   );
+
+  if (!config) return null;
 
   const chartData = (() => {
     if (!rangeAggregates || Object.keys(rangeAggregates).length === 0) return [];

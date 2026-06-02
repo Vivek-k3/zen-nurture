@@ -107,3 +107,51 @@ export const unsubscribeStaleEndpoint = httpAction(async (ctx, request) => {
     headers: { "Content-Type": "application/json" },
   });
 });
+
+/** Batch-record push delivery outcomes from the send routes (CRON_SECRET auth). */
+export const logDeliveries = httpAction(async (ctx, request) => {
+  if (request.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  const expectedSecret = process.env.CRON_SECRET;
+  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  type DeliveryStatus = "sent" | "failed" | "expired";
+  let body: {
+    deliveries?: Array<{
+      endpoint: string;
+      userId?: string;
+      status: string;
+      attempts: number;
+      title?: string;
+      error?: string;
+    }>;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const allowed: ReadonlySet<DeliveryStatus> = new Set(["sent", "failed", "expired"]);
+  // Drop anything whose status isn't one of the three valid states — the table
+  // only accepts those literals, and silently persisting garbage would make the
+  // by_status index unreliable.
+  const deliveries = (body.deliveries ?? [])
+    .filter((d): d is typeof d & { status: DeliveryStatus } =>
+      allowed.has(d.status as DeliveryStatus)
+    );
+  if (deliveries.length > 0) {
+    await ctx.runMutation(internal.push.recordDeliveries, { deliveries });
+  }
+  return new Response(JSON.stringify({ logged: deliveries.length }), {
+    headers: { "Content-Type": "application/json" },
+  });
+});
