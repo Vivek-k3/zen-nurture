@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { sendWithRetry, logDeliveries, type DeliveryOutcome } from "@/lib/push";
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY!;
@@ -79,10 +80,13 @@ export async function POST(req: Request) {
       return Response.json({ sent: 0, reason: "no subscriptions" });
     }
 
-    let sent = 0;
+    const deliveries: DeliveryOutcome[] = [];
     for (const reminder of toNotify) {
+      const title = reminder.isOverdue
+        ? `Overdue: ${reminder.rule.title}`
+        : reminder.rule.title;
       const payload = JSON.stringify({
-        title: reminder.isOverdue ? `Overdue: ${reminder.rule.title}` : reminder.rule.title,
+        title,
         body: reminder.isOverdue
           ? `This reminder is overdue. Tap to log.`
           : `Due now. Tap to log.`,
@@ -91,28 +95,29 @@ export async function POST(req: Request) {
       });
 
       for (const sub of subscriptions) {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: sub.keys },
-            payload
-          );
-          sent++;
-        } catch (err: unknown) {
-          const statusCode = (err as { statusCode?: number })?.statusCode;
-          if (statusCode === 404 || statusCode === 410) {
-            await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${CRON_SECRET}`,
-              },
-              body: JSON.stringify({ endpoint: sub.endpoint }),
-            }, FETCH_TIMEOUT_MS);
-          }
+        const outcome = await sendWithRetry(
+          { endpoint: sub.endpoint, keys: sub.keys, userId: sub.userId },
+          payload
+        );
+        outcome.title = title;
+        deliveries.push(outcome);
+
+        if (outcome.status === "expired") {
+          await fetchWithTimeout(`${CONVEX_SITE_URL}/api/push/cron-unsubscribe`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${CRON_SECRET}`,
+            },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          }, FETCH_TIMEOUT_MS);
         }
       }
     }
 
+    await logDeliveries(CONVEX_SITE_URL, CRON_SECRET, deliveries);
+
+    const sent = deliveries.filter((d) => d.status === "sent").length;
     return Response.json({ sent, reminders: toNotify.length });
   } catch (err: unknown) {
     return Response.json(

@@ -21,7 +21,6 @@ import type * as mora from "../mora.js";
 import type * as moraAgent from "../moraAgent.js";
 import type * as moraChat from "../moraChat.js";
 import type * as nudges from "../nudges.js";
-import type * as patchOrphanBabies from "../patchOrphanBabies.js";
 import type * as photos from "../photos.js";
 import type * as push from "../push.js";
 import type * as pushCron from "../pushCron.js";
@@ -48,7 +47,6 @@ declare const fullApi: ApiFromModules<{
   moraAgent: typeof moraAgent;
   moraChat: typeof moraChat;
   nudges: typeof nudges;
-  patchOrphanBabies: typeof patchOrphanBabies;
   photos: typeof photos;
   push: typeof push;
   pushCron: typeof pushCron;

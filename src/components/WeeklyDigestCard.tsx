@@ -16,17 +16,31 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
   const digest = useQuery(api.digest.getLatestDigest, babyId ? { babyId } : "skip");
   const [generating, setGenerating] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     setGenerating(true);
+    setError(null);
     try {
-      await fetch("/api/digest/generate", {
+      const res = await fetch("/api/digest/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ babyId }),
       });
-    } catch {}
-    setGenerating(false);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(
+          data?.error ||
+            (res.status === 429
+              ? "Too many requests — please wait a moment."
+              : "Couldn't generate the digest. Please try again.")
+        );
+      }
+    } catch {
+      setError("Couldn't reach the server. Check your connection.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
@@ -61,6 +75,7 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
           >
             {generating ? "Generating..." : "Generate This Week's Digest"}
           </button>
+          {error && <p className="text-[11px] text-alert-red mt-2 text-center">{error}</p>}
         </div>
       }
     >
@@ -98,6 +113,8 @@ export default function WeeklyDigestCard({ babyId }: WeeklyDigestCardProps) {
           </button>
         </div>
       </div>
+
+      {error && <p className="text-[11px] text-alert-red mb-2">{error}</p>}
 
       {/* Stats row */}
       <div className="grid grid-cols-4 gap-2 mb-3">

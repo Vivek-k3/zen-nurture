@@ -33,7 +33,9 @@ export default defineSchema({
     .index("by_email_status", ["email", "status"]),
 
   babyProfiles: defineTable({
-    familyId: v.optional(v.id("families")),
+    // Required: every baby belongs to a family. createBabyProfile enforces this;
+    // any legacy orphans were migrated (see git history of patchOrphanBabies).
+    familyId: v.id("families"),
     name: v.string(),
     dob: v.string(),
     gender: v.optional(v.string()),
@@ -156,6 +158,20 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_endpoint", ["endpoint"]),
+
+  // Per-notification delivery outcomes, recorded by the push send routes so
+  // failures are visible (not just console.log'd).
+  pushDeliveries: defineTable({
+    endpoint: v.string(),
+    userId: v.optional(v.string()),
+    status: v.string(), // "sent" | "failed" | "expired"
+    attempts: v.number(),
+    title: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_status", ["status"]),
 
   settings: defineTable({
     key: v.string(),
